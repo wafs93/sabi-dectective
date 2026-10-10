@@ -49,7 +49,7 @@ values
     '11111111-1111-4111-8111-000000000001',
     'Market security log',
     null,
-    'From the gate guard''s notebook. Logs Alhaja Bisi leaving the market at 7pm, a full hour before the attack.'
+    'Found on Mama Chidinma''s counter. Her logbook notes Alhaja Bisi closing up and leaving the market at 7pm, a full hour before the attack.'
   ),
   (
     '33333333-3333-4333-8333-000000000003',
