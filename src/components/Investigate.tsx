@@ -155,7 +155,7 @@ function CluesTab({
               <Placeholder
                 aspect="icon"
                 label={c.name}
-                icon={clueIcon(c.name)}
+                icon={clueIcon(c.id)}
                 imageUrl={c.icon_image_url}
                 showLabel={false}
               />
@@ -186,7 +186,7 @@ function NotebookTab({ bundle, progress }: { bundle: LoadedCase; progress: Progr
           <ul className="flex flex-col gap-2">
             {clues.map((c) => (
               <li key={c.id} className="flex gap-3 rounded-lg bg-noir-800 p-3">
-                <span className="text-xl">{clueIcon(c.name)}</span>
+                <span className="text-xl">{clueIcon(c.id)}</span>
                 <div>
                   <p className="text-sm font-semibold text-amber">{c.name}</p>
                   {c.found_description && (
@@ -209,7 +209,7 @@ function NotebookTab({ bundle, progress }: { bundle: LoadedCase; progress: Progr
           <ul className="flex flex-col gap-2">
             {progress.contradictions.map((c) => (
               <li
-                key={`${c.suspectName}-${c.question}`}
+                key={c.questionId}
                 className="rounded-lg border-l-4 border-rust bg-noir-800 p-3"
               >
                 <p className="text-xs font-semibold uppercase tracking-wider text-rust">

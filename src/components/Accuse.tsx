@@ -3,27 +3,41 @@
 import { useState } from "react";
 import Placeholder, { clueIcon } from "@/components/Placeholder";
 import { Button, ScreenHeader, SectionLabel } from "@/components/ui";
+import { submitAccusation } from "@/lib/api";
 import { collectedClues, type LoadedCase } from "@/lib/game";
-import type { Accusation, Progress } from "@/lib/types";
+import type { Progress, SavedResult } from "@/lib/types";
 
 export default function Accuse({
   bundle,
   progress,
   onBack,
-  onSubmit,
+  onResult,
 }: {
   bundle: LoadedCase;
   progress: Progress;
   onBack: () => void;
-  onSubmit: (accusation: Accusation) => void;
+  onResult: (saved: SavedResult) => void;
 }) {
   const [suspectId, setSuspectId] = useState<string | null>(null);
   const [cited, setCited] = useState<string[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const clues = collectedClues(bundle.clues, progress);
   const suspect = bundle.suspects.find((s) => s.id === suspectId);
 
   const toggle = (id: string) =>
     setCited((prev) => (prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]));
+
+  // The server decides the outcome; the browser never knows the answer.
+  const submit = async (accusedId: string) => {
+    setSubmitting(true);
+    setError(null);
+    const accusation = { suspectId: accusedId, citedClueIds: cited };
+    const res = await submitAccusation(bundle.caseData.id, accusation);
+    setSubmitting(false);
+    if (res.ok) onResult({ accusation, result: res.result });
+    else setError(res.message);
+  };
 
   return (
     <div className="flex flex-1 flex-col">
@@ -45,6 +59,7 @@ export default function Accuse({
                 onClick={() => {
                   setSuspectId(s.id);
                   setCited([]);
+                  setError(null);
                 }}
                 className="flex flex-col gap-2 rounded-lg border border-noir-700 bg-noir-800 p-2 transition-colors hover:border-rust"
               >
@@ -83,7 +98,7 @@ export default function Accuse({
                         onChange={() => toggle(c.id)}
                         className="mt-1 h-4 w-4 accent-amber"
                       />
-                      <span className="text-xl">{clueIcon(c.name)}</span>
+                      <span className="text-xl">{clueIcon(c.id)}</span>
                       <span>
                         <span className="block text-sm font-semibold text-paper">{c.name}</span>
                         {c.found_description && (
@@ -97,16 +112,26 @@ export default function Accuse({
             </ul>
           )}
 
-          <div className="mt-auto pt-4">
+          <div className="mt-auto flex flex-col gap-2 pt-4">
+            {error && (
+              <p
+                role="alert"
+                className="rounded-lg border border-rust bg-rust-dim/30 p-3 text-sm text-paper"
+              >
+                {error}
+              </p>
+            )}
             <Button
               variant="danger"
               className="w-full text-center"
-              disabled={cited.length === 0}
-              onClick={() => onSubmit({ suspectId: suspect.id, citedClueIds: cited })}
+              disabled={cited.length === 0 || submitting}
+              onClick={() => submit(suspect.id)}
             >
-              {cited.length === 0
-                ? "Tick at least one piece of evidence"
-                : `Submit accusation (${cited.length} cited)`}
+              {submitting
+                ? "Checking your case…"
+                : cited.length === 0
+                  ? "Tick at least one piece of evidence"
+                  : `Submit accusation (${cited.length} cited)`}
             </Button>
           </div>
         </div>

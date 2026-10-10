@@ -1,26 +1,30 @@
 import { case1Fallback } from "@/data/case1-fallback";
-import { outcomes } from "@/data/outcomes";
 import { supabase } from "@/lib/supabase";
-import type { Accusation, CaseBundle, Clue, Progress, ResultTier } from "@/lib/types";
+import type { CaseBundle, Clue, Contradiction, Progress, SavedResult } from "@/lib/types";
 
 export type LoadedCase = CaseBundle & { source: "supabase" | "local" };
 
 const fallbacks: Record<number, CaseBundle> = { 1: case1Fallback };
+
+// Explicit columns: the public tables must never be asked for anything answer-related.
+const CASE_COLUMNS = "id, case_number, title, briefing_text, scene_image_url, release_date";
+const SUSPECT_COLUMNS = "id, case_id, name, portrait_image_url, connection, motive";
+const CLUE_COLUMNS = "id, case_id, name, icon_image_url, found_description";
 
 async function fetchFromSupabase(caseNumber: number): Promise<CaseBundle | null> {
   if (!supabase) return null;
 
   const { data: caseData, error: caseError } = await supabase
     .from("cases")
-    .select("*")
+    .select(CASE_COLUMNS)
     .eq("case_number", caseNumber)
     .maybeSingle();
   if (caseError) throw caseError;
   if (!caseData) return null;
 
   const [suspectsRes, cluesRes] = await Promise.all([
-    supabase.from("suspects").select("*").eq("case_id", caseData.id).order("name"),
-    supabase.from("clues").select("*").eq("case_id", caseData.id).order("name"),
+    supabase.from("suspects").select(SUSPECT_COLUMNS).eq("case_id", caseData.id).order("name"),
+    supabase.from("clues").select(CLUE_COLUMNS).eq("case_id", caseData.id).order("name"),
   ]);
   if (suspectsRes.error) throw suspectsRes.error;
   if (cluesRes.error) throw cluesRes.error;
@@ -40,23 +44,6 @@ export async function loadCase(caseNumber: number): Promise<LoadedCase> {
   return { ...local, source: "local" };
 }
 
-export function scoreAccusation(
-  bundle: CaseBundle,
-  accusation: Accusation,
-): ResultTier {
-  const { caseData, clues } = bundle;
-  if (accusation.suspectId !== caseData.solution_suspect_id) return "missed";
-
-  const keyEvidence = outcomes[caseData.case_number]?.keyEvidence ?? [];
-  const citedNames = new Set(
-    clues.filter((c) => accusation.citedClueIds.includes(c.id)).map((c) => c.name),
-  );
-  const citedKeyCount = keyEvidence.filter((name) => citedNames.has(name)).length;
-
-  if (keyEvidence.length > 0 && citedKeyCount === keyEvidence.length) return "cracked";
-  return "close";
-}
-
 export function collectedClues(clues: Clue[], progress: Progress): Clue[] {
   return clues.filter((c) => progress.foundClueIds.includes(c.id));
 }
@@ -65,16 +52,26 @@ export function collectedClues(clues: Clue[], progress: Progress): Clue[] {
 
 export const emptyProgress: Progress = { foundClueIds: [], contradictions: [] };
 
-const storageKey = (caseNumber: number) => `sabi-detective:case-${caseNumber}:progress`;
+const progressKey = (caseNumber: number) => `sabi-detective:case-${caseNumber}:progress`;
+const resultKey = (caseNumber: number) => `sabi-detective:case-${caseNumber}:result`;
+
+const isContradiction = (c: unknown): c is Contradiction =>
+  typeof c === "object" &&
+  c !== null &&
+  typeof (c as Contradiction).questionId === "string" &&
+  typeof (c as Contradiction).suspectId === "string";
 
 export function readProgress(caseNumber: number): Progress {
   try {
-    const raw = window.localStorage.getItem(storageKey(caseNumber));
+    const raw = window.localStorage.getItem(progressKey(caseNumber));
     if (!raw) return emptyProgress;
     const parsed = JSON.parse(raw) as Partial<Progress>;
     return {
       foundClueIds: Array.isArray(parsed.foundClueIds) ? parsed.foundClueIds : [],
-      contradictions: Array.isArray(parsed.contradictions) ? parsed.contradictions : [],
+      // Entries saved before contradictions had ids are dropped.
+      contradictions: Array.isArray(parsed.contradictions)
+        ? parsed.contradictions.filter(isContradiction)
+        : [],
     };
   } catch {
     return emptyProgress;
@@ -83,15 +80,44 @@ export function readProgress(caseNumber: number): Progress {
 
 export function writeProgress(caseNumber: number, progress: Progress): void {
   try {
-    window.localStorage.setItem(storageKey(caseNumber), JSON.stringify(progress));
+    window.localStorage.setItem(progressKey(caseNumber), JSON.stringify(progress));
   } catch {
     // Storage unavailable (private mode etc.): progress stays in memory only.
   }
 }
 
+// The saved result is only for showing the Result screen again after a refresh.
+// It is not trusted for anything else.
+export function readResult(caseNumber: number): SavedResult | null {
+  try {
+    const raw = window.localStorage.getItem(resultKey(caseNumber));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as SavedResult;
+    const ok =
+      typeof parsed?.result?.outcome === "string" &&
+      typeof parsed.result.title === "string" &&
+      typeof parsed.result.explanation === "string" &&
+      Array.isArray(parsed.result.feedback) &&
+      typeof parsed.accusation?.suspectId === "string" &&
+      Array.isArray(parsed.accusation.citedClueIds);
+    return ok ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeResult(caseNumber: number, saved: SavedResult): void {
+  try {
+    window.localStorage.setItem(resultKey(caseNumber), JSON.stringify(saved));
+  } catch {
+    // ignore
+  }
+}
+
 export function clearProgress(caseNumber: number): void {
   try {
-    window.localStorage.removeItem(storageKey(caseNumber));
+    window.localStorage.removeItem(progressKey(caseNumber));
+    window.localStorage.removeItem(resultKey(caseNumber));
   } catch {
     // ignore
   }

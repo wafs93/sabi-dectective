@@ -1,3 +1,5 @@
+import { CASE1_CLUES } from "@/data/case1-ids";
+
 type Aspect = "scene" | "portrait" | "icon";
 
 const aspectClass: Record<Aspect, string> = {
@@ -64,12 +66,13 @@ export default function Placeholder({
   );
 }
 
+// Keyed by clue id.
 const clueIcons: Record<string, string> = {
-  "Torn wage ledger page": "📄",
-  "Market security log": "📓",
-  "Muddy footprint": "👣",
+  [CASE1_CLUES.ledger]: "📄",
+  [CASE1_CLUES.securityLog]: "📓",
+  [CASE1_CLUES.footprint]: "👣",
 };
 
-export function clueIcon(name: string) {
-  return clueIcons[name] ?? "🔍";
+export function clueIcon(clueId: string) {
+  return clueIcons[clueId] ?? "🔍";
 }

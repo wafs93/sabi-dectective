@@ -1,3 +1,5 @@
+// Everything in this file is safe to ship to the browser. The answer lives only on the server.
+
 export type CaseRow = {
   id: string;
   case_number: number;
@@ -5,7 +7,6 @@ export type CaseRow = {
   briefing_text: string;
   scene_image_url: string | null;
   release_date: string | null;
-  solution_suspect_id: string | null;
 };
 
 export type Suspect = {
@@ -23,7 +24,6 @@ export type Clue = {
   name: string;
   icon_image_url: string | null;
   found_description: string | null;
-  is_red_herring: boolean;
 };
 
 export type CaseBundle = {
@@ -33,6 +33,8 @@ export type CaseBundle = {
 };
 
 export type Contradiction = {
+  suspectId: string;
+  questionId: string;
   suspectName: string;
   question: string;
   clueName: string;
@@ -50,4 +52,17 @@ export type ResultTier = "cracked" | "close" | "missed";
 export type Accusation = {
   suspectId: string;
   citedClueIds: string[];
+};
+
+// What POST /api/accuse returns. Never includes the solution or key clue ids.
+export type AccusationResult = {
+  outcome: ResultTier;
+  title: string;
+  explanation: string;
+  feedback: string[];
+};
+
+export type SavedResult = {
+  accusation: Accusation;
+  result: AccusationResult;
 };

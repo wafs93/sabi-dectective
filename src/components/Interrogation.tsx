@@ -21,20 +21,18 @@ export default function Interrogation({
   onContradiction: (entry: Contradiction) => void;
   onBack: () => void;
 }) {
-  const script = interrogations[suspect.name];
+  const script = interrogations[suspect.id];
   const [exchange, setExchange] = useState<Exchange>({
     asked: null,
     answer: script?.openingLine ?? "…",
     confronted: false,
   });
 
-  const foundClueNames = new Set(
-    clues.filter((c) => progress.foundClueIds.includes(c.id)).map((c) => c.name),
-  );
+  const clueName = (id: string) => clues.find((c) => c.id === id)?.name ?? "Evidence";
 
   const canConfront = (q: InterrogationQuestion) =>
-    Boolean(q.unlockedByClue && q.confrontText && q.confrontedAnswer) &&
-    foundClueNames.has(q.unlockedByClue!);
+    Boolean(q.unlockedByClueId && q.confrontText && q.confrontedAnswer) &&
+    progress.foundClueIds.includes(q.unlockedByClueId!);
 
   const ask = (q: InterrogationQuestion) =>
     setExchange({ asked: q.text, answer: q.defaultAnswer, confronted: false });
@@ -42,9 +40,11 @@ export default function Interrogation({
   const confront = (q: InterrogationQuestion) => {
     setExchange({ asked: q.confrontText!, answer: q.confrontedAnswer!, confronted: true });
     onContradiction({
+      suspectId: suspect.id,
+      questionId: q.id,
       suspectName: suspect.name,
       question: q.text,
-      clueName: q.unlockedByClue!,
+      clueName: clueName(q.unlockedByClueId!),
       confrontText: q.confrontText!,
       answer: q.confrontedAnswer!,
     });
@@ -104,7 +104,7 @@ export default function Interrogation({
             {canConfront(q) && (
               <Button variant="danger" onClick={() => confront(q)}>
                 <span className="block text-[10px] uppercase tracking-wider text-amber">
-                  Confront with: {q.unlockedByClue}
+                  Confront with: {clueName(q.unlockedByClueId!)}
                 </span>
                 “{q.confrontText}”
               </Button>

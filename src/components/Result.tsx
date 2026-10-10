@@ -1,7 +1,6 @@
 import { Button } from "@/components/ui";
-import { outcomes } from "@/data/outcomes";
 import type { LoadedCase } from "@/lib/game";
-import type { Accusation, ResultTier } from "@/lib/types";
+import type { ResultTier, SavedResult } from "@/lib/types";
 
 const tierStyle: Record<ResultTier, { stamp: string; accent: string }> = {
   cracked: { stamp: "🏆", accent: "border-amber text-amber" },
@@ -11,19 +10,18 @@ const tierStyle: Record<ResultTier, { stamp: string; accent: string }> = {
 
 export default function Result({
   bundle,
-  tier,
-  accusation,
+  saved,
   onPlayAgain,
 }: {
   bundle: LoadedCase;
-  tier: ResultTier;
-  accusation: Accusation;
+  saved: SavedResult;
   onPlayAgain: () => void;
 }) {
-  const result = outcomes[bundle.caseData.case_number]?.results[tier];
+  // Everything shown here came from the server's /api/accuse response.
+  const { accusation, result } = saved;
   const accused = bundle.suspects.find((s) => s.id === accusation.suspectId);
   const cited = bundle.clues.filter((c) => accusation.citedClueIds.includes(c.id));
-  const style = tierStyle[tier];
+  const style = tierStyle[result.outcome] ?? tierStyle.missed;
 
   return (
     <div className="flex flex-1 flex-col gap-6 px-4 py-8">
@@ -36,11 +34,19 @@ export default function Result({
       >
         <span className="text-5xl">{style.stamp}</span>
         <h1 className="font-display text-3xl uppercase tracking-wide">
-          {result?.title ?? tier}
+          {result.title}
         </h1>
       </div>
 
-      {result && <p className="text-[15px] leading-relaxed text-paper/90">{result.text}</p>}
+      <p className="text-[15px] leading-relaxed text-paper/90">{result.explanation}</p>
+
+      {result.feedback.length > 0 && (
+        <ul className="flex flex-col gap-1 text-sm text-paper/80">
+          {result.feedback.map((line) => (
+            <li key={line}>· {line}</li>
+          ))}
+        </ul>
+      )}
 
       <div className="rounded-lg bg-noir-800 p-4 text-sm">
         <p className="text-muted">

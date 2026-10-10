@@ -11,18 +11,19 @@ import {
   emptyProgress,
   loadCase,
   readProgress,
-  scoreAccusation,
+  readResult,
   writeProgress,
+  writeResult,
   type LoadedCase,
 } from "@/lib/game";
-import type { Accusation, Contradiction, Progress, ResultTier } from "@/lib/types";
+import type { Contradiction, Progress, SavedResult } from "@/lib/types";
 
 type Screen =
   | { name: "opening" }
   | { name: "investigate" }
   | { name: "interrogate"; suspectId: string }
   | { name: "accuse" }
-  | { name: "result"; tier: ResultTier; accusation: Accusation };
+  | { name: "result"; saved: SavedResult };
 
 export default function Game({ caseNumber }: { caseNumber: number }) {
   const [bundle, setBundle] = useState<LoadedCase | null>(null);
@@ -38,6 +39,8 @@ export default function Game({ caseNumber }: { caseNumber: number }) {
         if (cancelled) return;
         setBundle(loaded);
         setProgress(readProgress(caseNumber));
+        const saved = readResult(caseNumber);
+        if (saved) setScreen({ name: "result", saved });
       })
       .catch((err: unknown) => {
         if (!cancelled) setLoadError(err instanceof Error ? err.message : "Could not load case.");
@@ -71,9 +74,7 @@ export default function Game({ caseNumber }: { caseNumber: number }) {
   const logContradiction = useCallback(
     (entry: Contradiction) =>
       updateProgress((prev) =>
-        prev.contradictions.some(
-          (c) => c.suspectName === entry.suspectName && c.question === entry.question,
-        )
+        prev.contradictions.some((c) => c.questionId === entry.questionId)
           ? prev
           : { ...prev, contradictions: [...prev.contradictions, entry] },
       ),
@@ -148,24 +149,16 @@ export default function Game({ caseNumber }: { caseNumber: number }) {
           bundle={bundle}
           progress={progress}
           onBack={() => setScreen({ name: "investigate" })}
-          onSubmit={(accusation) =>
-            setScreen({
-              name: "result",
-              tier: scoreAccusation(bundle, accusation),
-              accusation,
-            })
-          }
+          onResult={(saved) => {
+            writeResult(caseNumber, saved);
+            setScreen({ name: "result", saved });
+          }}
         />
       );
 
     case "result":
       return (
-        <Result
-          bundle={bundle}
-          tier={screen.tier}
-          accusation={screen.accusation}
-          onPlayAgain={playAgain}
-        />
+        <Result bundle={bundle} saved={screen.saved} onPlayAgain={playAgain} />
       );
   }
 }

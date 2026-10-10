@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint .",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "check:bundle": "next build && node --env-file-if-exists=.env.local scripts/check-bundle.mjs",
+    "check:public-access": "node --env-file=.env.local scripts/check-public-access.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.3",
@@ -26,7 +28,6 @@
     "eslint-config-next": "^16.4.0",
     "tailwindcss": "^4.3.3",
     "typescript": "^5",
-    "vite-tsconfig-paths": "^6.1.1",
     "vitest": "^5.0.3"
   }
 }
