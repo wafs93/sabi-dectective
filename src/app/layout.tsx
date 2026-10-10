@@ -15,7 +15,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body className="min-h-dvh font-sans">
+      <body className="min-h-dvh font-sans" suppressHydrationWarning>
         <main className="mx-auto flex min-h-dvh w-full max-w-[420px] flex-col bg-noir-900 shadow-2xl shadow-black">
           {children}
         </main>
