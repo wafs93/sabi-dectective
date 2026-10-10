@@ -3,9 +3,11 @@ import type { ButtonHTMLAttributes, ReactNode } from "react";
 type Variant = "primary" | "secondary" | "danger" | "ghost";
 
 const variants: Record<Variant, string> = {
-  primary: "bg-amber text-noir-950 hover:bg-amber/90 disabled:bg-amber-dim disabled:text-noir-800",
-  secondary: "border border-noir-600 bg-noir-800 text-paper hover:border-amber-dim",
-  danger: "border border-rust bg-rust-dim/40 text-paper hover:bg-rust-dim/70",
+  primary:
+    "bg-brass text-ink-900 hover:bg-brass/90 disabled:bg-ink-700 disabled:text-muted",
+  secondary: "border border-ink-600 bg-ink-800 text-paper hover:border-brass-dim",
+  danger:
+    "border border-danger/70 bg-danger-deep text-paper hover:bg-danger-deep/80 disabled:border-ink-600 disabled:bg-ink-700 disabled:text-muted",
   ghost: "text-muted hover:text-paper",
 };
 
@@ -17,7 +19,7 @@ export function Button({
   return (
     <button
       type="button"
-      className={`rounded-lg px-4 py-3 text-left text-sm font-semibold transition-colors disabled:cursor-not-allowed ${variants[variant]} ${className}`}
+      className={`min-h-11 rounded-lg px-4 py-3 text-left text-base font-semibold transition-colors disabled:cursor-not-allowed ${variants[variant]} ${className}`}
       {...props}
     />
   );
@@ -35,26 +37,22 @@ export function ScreenHeader({
   backLabel?: string;
 }) {
   return (
-    <header className="border-b border-noir-700 px-4 pb-3 pt-4">
+    <header className="border-b border-ink-700 px-4 pb-3 pt-[max(0.5rem,env(safe-area-inset-top))]">
       {onBack && (
         <button
           type="button"
           onClick={onBack}
-          className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted hover:text-amber"
+          className="-ml-2 flex min-h-11 items-center px-2 text-sm font-semibold text-muted hover:text-brass"
         >
           ← {backLabel}
         </button>
       )}
-      {eyebrow && (
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber">{eyebrow}</p>
-      )}
-      <h1 className="font-display text-2xl text-paper">{title}</h1>
+      {eyebrow && <p className="text-sm text-brass">{eyebrow}</p>}
+      <h1 className="font-display text-2xl leading-tight text-paper">{title}</h1>
     </header>
   );
 }
 
 export function SectionLabel({ children }: { children: ReactNode }) {
-  return (
-    <h2 className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-muted">{children}</h2>
-  );
+  return <h2 className="mb-2 font-display text-lg text-paper">{children}</h2>;
 }

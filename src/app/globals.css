@@ -1,27 +1,99 @@
 @import "tailwindcss";
 
+/* Nigerian noir: charcoal night, ivory paper, brass lamplight, burgundy danger, green verified.
+   Every text colour below meets 4.5:1 on ink-700 or darker (checked when chosen). */
 @theme {
-  --color-noir-950: #0c0a09;
-  --color-noir-900: #15110f;
-  --color-noir-800: #1f1915;
-  --color-noir-700: #2b231d;
-  --color-noir-600: #3a2f27;
-  --color-paper: #efe6d8;
-  --color-muted: #a39584;
-  --color-amber: #e0a33a;
-  --color-amber-dim: #8a6424;
-  --color-rust: #b5532a;
-  --color-rust-dim: #6e3219;
-  --font-display: Georgia, "Times New Roman", serif;
+  --color-ink-950: #0d0c0b;
+  --color-ink-900: #151311;
+  --color-ink-800: #1f1b18;
+  --color-ink-700: #2d2823;
+  --color-ink-600: #40392f;
+
+  --color-paper: #f2ebdd;
+  --color-paper-ink: #40392f;
+  --color-muted: #b9ae9d;
+
+  --color-brass: #d9a548;
+  --color-brass-dim: #8a6a32; /* borders and fills only, never text */
+  --color-brass-deep: #3a2c14;
+
+  --color-danger: #e3959b;
+  --color-danger-deep: #5a1f2a;
+  --color-danger-ink: #7a2433;
+
+  --color-verified: #93c49e;
+  --color-verified-deep: #1f3a28;
+}
+
+@theme inline {
+  --font-display: var(--font-fraunces), Georgia, "Times New Roman", serif;
+  --font-sans: var(--font-source-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
 html,
 body {
-  background: var(--color-noir-950);
+  background: var(--color-ink-950);
   color: var(--color-paper);
 }
 
 body {
+  font-size: 1rem;
+  line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-brass);
+  outline-offset: 2px;
+}
+
+/* ---- Ambient motion (all of it is switched off for reduced motion) ---- */
+
+@keyframes scene-drift {
+  from {
+    transform: scale(1.06) translate3d(-1.5%, -1%, 0);
+  }
+  to {
+    transform: scale(1.12) translate3d(1.5%, 1%, 0);
+  }
+}
+
+@keyframes lamp-flicker {
+  0%, 100% { opacity: 0.55; }
+  45% { opacity: 0.7; }
+  50% { opacity: 0.5; }
+  55% { opacity: 0.68; }
+}
+
+@keyframes hotspot-breathe {
+  0%, 100% { box-shadow: 0 0 0 0 rgb(217 165 72 / 0.45); }
+  50% { box-shadow: 0 0 0 10px rgb(217 165 72 / 0); }
+}
+
+@keyframes found-flash {
+  0% { transform: translate(-50%, -50%) scale(1); box-shadow: 0 0 0 0 rgb(147 196 158 / 0.8); }
+  40% { transform: translate(-50%, -50%) scale(1.18); }
+  100% { transform: translate(-50%, -50%) scale(1); box-shadow: 0 0 0 18px rgb(147 196 158 / 0); }
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.anim-drift { animation: scene-drift 40s ease-in-out infinite alternate; }
+.anim-flicker { animation: lamp-flicker 5s ease-in-out infinite; }
+.anim-breathe { animation: hotspot-breathe 2.8s ease-in-out infinite; }
+.anim-found { animation: found-flash 700ms ease-out; }
+.anim-toast { animation: toast-in 200ms ease-out; }
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
 }

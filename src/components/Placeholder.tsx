@@ -1,19 +1,20 @@
+import Image, { type StaticImageData } from "next/image";
 import { CASE1_CLUES } from "@/data/case1-ids";
 
 type Aspect = "scene" | "portrait" | "icon";
 
 const aspectClass: Record<Aspect, string> = {
   scene: "aspect-video",
-  portrait: "aspect-[3/4]",
+  portrait: "aspect-[2/3]",
   icon: "aspect-square",
 };
 
 const tones = [
-  "from-rust-dim to-noir-800",
-  "from-amber-dim to-noir-800",
-  "from-noir-600 to-noir-900",
-  "from-[#4a2a3a] to-noir-800",
-  "from-[#2a3f3a] to-noir-800",
+  "from-danger-deep to-ink-800",
+  "from-brass-deep to-ink-800",
+  "from-ink-600 to-ink-900",
+  "from-[#4a2a3a] to-ink-800",
+  "from-[#2a3f3a] to-ink-800",
 ];
 
 function toneFor(seed: string) {
@@ -22,29 +23,39 @@ function toneFor(seed: string) {
   return tones[Math.abs(hash) % tones.length];
 }
 
-// Static art slot: renders imageUrl when set, otherwise a colored block with an icon and label.
+// Art slot: bundled art first, then a database image URL, otherwise a coloured block.
 export default function Placeholder({
   aspect,
   label,
   icon,
+  art,
   imageUrl,
+  sizes = "(max-width: 480px) 50vw, 240px",
   className = "",
   showLabel = true,
 }: {
   aspect: Aspect;
   label: string;
   icon?: string;
+  art?: StaticImageData | null;
   imageUrl?: string | null;
+  sizes?: string;
   className?: string;
   showLabel?: boolean;
 }) {
-  if (imageUrl) {
+  if (art || imageUrl) {
     return (
-      <img
-        src={imageUrl}
-        alt={label}
-        className={`${aspectClass[aspect]} w-full rounded-lg object-cover ${className}`}
-      />
+      <div className={`relative ${aspectClass[aspect]} w-full overflow-hidden rounded-lg ${className}`}>
+        <Image
+          src={art ?? imageUrl!}
+          alt={label}
+          fill
+          sizes={sizes}
+          className="object-cover"
+          // Database URLs are external and not in remotePatterns; serve them as-is.
+          unoptimized={!art}
+        />
+      </div>
     );
   }
 
@@ -52,12 +63,12 @@ export default function Placeholder({
     <div
       role="img"
       aria-label={label}
-      className={`${aspectClass[aspect]} flex w-full flex-col items-center justify-center gap-1 rounded-lg border border-noir-600 bg-gradient-to-br p-2 text-center ${toneFor(label)} ${className}`}
+      className={`${aspectClass[aspect]} flex w-full flex-col items-center justify-center gap-1 rounded-lg border border-ink-600 bg-gradient-to-br p-2 text-center ${toneFor(label)} ${className}`}
     >
-      {icon && <span className={aspect === "icon" ? "text-2xl" : "text-4xl"}>{icon}</span>}
+      {icon && <span aria-hidden className={aspect === "icon" ? "text-2xl" : "text-4xl"}>{icon}</span>}
       {showLabel && (
         <span
-          className={`font-display leading-tight text-paper/80 ${aspect === "icon" ? "text-[10px]" : "text-sm"}`}
+          className={`font-display leading-tight text-paper/80 ${aspect === "icon" ? "text-xs" : "text-sm"}`}
         >
           {label}
         </span>
@@ -66,7 +77,7 @@ export default function Placeholder({
   );
 }
 
-// Keyed by clue id.
+// Fallback emoji per clue id, used when a clue has no art.
 const clueIcons: Record<string, string> = {
   [CASE1_CLUES.ledger]: "📄",
   [CASE1_CLUES.securityLog]: "📓",
