@@ -49,7 +49,7 @@ export const interrogations: Record<string, Interrogation> = {
         text: "Where were you last night?",
         defaultAnswer: "I closed up and went home early.",
         unlockedByClueId: CASE1_CLUES.securityLog,
-        confrontText: "The gate log shows you left at 7pm.",
+        confrontText: "Mama Chidinma's logbook shows you left at 7pm.",
         confrontedAnswer: "Exactly. I was long gone before anything happened.",
       },
       {

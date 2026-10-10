@@ -47,7 +47,7 @@ export const case1Fallback: CaseBundle = {
       name: "Market security log",
       icon_image_url: null,
       found_description:
-        "From the gate guard's notebook. Logs Alhaja Bisi leaving the market at 7pm, a full hour before the attack.",
+        "Found on Mama Chidinma's counter. Her logbook notes Alhaja Bisi closing up and leaving the market at 7pm, a full hour before the attack.",
     },
     {
       id: CASE1_CLUES.footprint,
