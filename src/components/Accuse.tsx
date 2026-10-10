@@ -6,14 +6,17 @@ import { Button, ScreenHeader, SectionLabel } from "@/components/ui";
 import { submitAccusation } from "@/lib/api";
 import { collectedClues, type LoadedCase } from "@/lib/game";
 import type { Progress, SavedResult } from "@/lib/types";
+import type { CaseArt } from "@/data/case1-art";
 
 export default function Accuse({
   bundle,
+  art,
   progress,
   onBack,
   onResult,
 }: {
   bundle: LoadedCase;
+  art: CaseArt | null;
   progress: Progress;
   onBack: () => void;
   onResult: (saved: SavedResult) => void;
@@ -61,12 +64,13 @@ export default function Accuse({
                   setCited([]);
                   setError(null);
                 }}
-                className="flex flex-col gap-2 rounded-lg border border-noir-700 bg-noir-800 p-2 transition-colors hover:border-rust"
+                className="flex flex-col gap-2 rounded-lg border border-ink-700 bg-ink-800 p-2 transition-colors hover:border-danger"
               >
                 <Placeholder
                   aspect="portrait"
                   label={s.name}
                   icon="👤"
+                  art={art?.portraits[s.id]}
                   imageUrl={s.portrait_image_url}
                 />
                 <span className="font-display text-base text-paper">{s.name}</span>
@@ -78,7 +82,7 @@ export default function Accuse({
         <div className="flex flex-1 flex-col gap-3 px-4 py-5">
           <SectionLabel>Step 2 · Cite the evidence that proves it</SectionLabel>
           {clues.length === 0 ? (
-            <p className="text-sm text-muted">
+            <p className="text-muted">
               Your notebook is empty. Go back and collect some evidence first.
             </p>
           ) : (
@@ -89,20 +93,30 @@ export default function Accuse({
                   <li key={c.id}>
                     <label
                       className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors ${
-                        checked ? "border-amber bg-amber/10" : "border-noir-700 bg-noir-800"
+                        checked ? "border-brass bg-brass/10" : "border-ink-700 bg-ink-800"
                       }`}
                     >
                       <input
                         type="checkbox"
                         checked={checked}
                         onChange={() => toggle(c.id)}
-                        className="mt-1 h-4 w-4 accent-amber"
+                        className="mt-1 h-4 w-4 accent-brass"
                       />
-                      <span className="text-xl">{clueIcon(c.id)}</span>
+                      <span className="w-12 shrink-0">
+                        <Placeholder
+                          aspect="icon"
+                          label={c.name}
+                          icon={clueIcon(c.id)}
+                          art={art?.clues[c.id]}
+                          imageUrl={c.icon_image_url}
+                          sizes="48px"
+                          showLabel={false}
+                        />
+                      </span>
                       <span>
-                        <span className="block text-sm font-semibold text-paper">{c.name}</span>
+                        <span className="block font-semibold text-paper">{c.name}</span>
                         {c.found_description && (
-                          <span className="block text-xs text-muted">{c.found_description}</span>
+                          <span className="block text-sm text-muted">{c.found_description}</span>
                         )}
                       </span>
                     </label>
@@ -116,7 +130,7 @@ export default function Accuse({
             {error && (
               <p
                 role="alert"
-                className="rounded-lg border border-rust bg-rust-dim/30 p-3 text-sm text-paper"
+                className="rounded-lg border border-danger bg-danger-deep/30 p-3 text-paper"
               >
                 {error}
               </p>
