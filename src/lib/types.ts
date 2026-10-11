@@ -42,9 +42,21 @@ export type Contradiction = {
   answer: string;
 };
 
+// A locked clue the player has unlocked, as the server returned it. Kept in saved
+// progress so it still shows after a reload. Untrusted and for display only: it never
+// affects scoring, which the server does from its own data.
+export type UnlockedClue = {
+  id: string;
+  name: string;
+  found_description: string | null;
+  icon_image_url: string | null;
+};
+
 export type Progress = {
   foundClueIds: string[];
   contradictions: Contradiction[];
+  // Only present once something is unlocked. Each id is also in foundClueIds.
+  unlockedClues?: UnlockedClue[];
 };
 
 export type ResultTier = "cracked" | "close" | "missed";
