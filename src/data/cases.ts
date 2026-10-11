@@ -16,6 +16,18 @@ export function caseFallback(caseNumber: number): CaseBundle | null {
   return fallbackByCaseNumber[caseNumber] ?? null;
 }
 
+// Whether a case has locked clues. This is the only switch for the feature: when it is
+// false the game never asks /api/unlock about that case. No locked clue content, ids or
+// rules live in browser code; the server holds them.
+const lockedCluesByCaseNumber: Record<number, boolean> = {
+  1: false,
+  2: false,
+};
+
+export function hasLockedClues(caseNumber: number): boolean {
+  return lockedCluesByCaseNumber[caseNumber] === true;
+}
+
 export type CaseListing = {
   caseNumber: number;
   // From the offline copy; null for a locked case.

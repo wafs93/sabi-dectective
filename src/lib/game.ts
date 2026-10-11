@@ -70,6 +70,20 @@ export function heldClues(bundle: CaseBundle, progress: Progress): Clue[] {
   return [...found, ...unlocked];
 }
 
+// Adds a newly unlocked clue to progress: its content to unlockedClues and its id to
+// foundClueIds, each only once. Returns the same object when nothing changes.
+export function addUnlockedClue(progress: Progress, clue: UnlockedClue): Progress {
+  const unlocked = progress.unlockedClues ?? [];
+  const hasContent = unlocked.some((c) => c.id === clue.id);
+  const hasId = progress.foundClueIds.includes(clue.id);
+  if (hasContent && hasId) return progress;
+  return {
+    ...progress,
+    foundClueIds: hasId ? progress.foundClueIds : [...progress.foundClueIds, clue.id],
+    unlockedClues: hasContent ? unlocked : [...unlocked, clue],
+  };
+}
+
 // ---- localStorage persistence ----
 
 export const emptyProgress: Progress = { foundClueIds: [], contradictions: [] };

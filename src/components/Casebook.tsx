@@ -8,10 +8,13 @@ export default function Casebook({
   bundle,
   art,
   progress,
+  newClueIds = [],
 }: {
   bundle: LoadedCase;
   art: CaseArt | null;
   progress: Progress;
+  // Unlocked clues not yet seen here: marked "New" until the player leaves the Casebook.
+  newClueIds?: string[];
 }) {
   const clues = heldClues(bundle, progress);
 
@@ -39,7 +42,14 @@ export default function Casebook({
                     />
                   </div>
                   <div>
-                    <p className="font-semibold text-brass">{c.name}</p>
+                    <p className="font-semibold text-brass">
+                      {c.name}
+                      {newClueIds.includes(c.id) && (
+                        <span className="ml-2 rounded-full bg-brass px-2 py-0.5 align-middle text-xs font-semibold text-ink-900">
+                          New
+                        </span>
+                      )}
+                    </p>
                     {c.found_description && <p className="text-paper/90">{c.found_description}</p>}
                   </div>
                 </li>

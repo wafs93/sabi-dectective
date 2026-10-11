@@ -5,11 +5,13 @@ import { useEffect, useRef, useState } from "react";
 import Placeholder, { clueIcon } from "@/components/Placeholder";
 import { Button, SectionLabel } from "@/components/ui";
 import { interrogations, type InterrogationQuestion } from "@/data/interrogations";
-import type { Clue, Contradiction, Progress, Suspect } from "@/lib/types";
+import type { Clue, Contradiction, Progress, Suspect, UnlockedClue } from "@/lib/types";
 
 type Message =
   | { id: number; from: "suspect"; text: string; confronted: boolean }
-  | { id: number; from: "player"; text: string; evidence?: string };
+  | { id: number; from: "player"; text: string; evidence?: string }
+  // A locked clue this confront revealed.
+  | { id: number; from: "evidence"; text: string };
 
 export default function Interrogation({
   suspect,
@@ -17,6 +19,7 @@ export default function Interrogation({
   heldClues,
   progress,
   onContradiction,
+  onConfrontUnlock,
   onBack,
 }: {
   suspect: Suspect;
@@ -25,6 +28,9 @@ export default function Interrogation({
   heldClues: Clue[];
   progress: Progress;
   onContradiction: (entry: Contradiction) => void;
+  // Only for cases with locked clues: asks whether this confront reveals one. Resolves to
+  // the new clue, or null for anything else (including errors), and never throws.
+  onConfrontUnlock?: (suspectId: string, clueId: string) => Promise<UnlockedClue | null>;
   onBack: () => void;
 }) {
   const script = interrogations[suspect.id];
@@ -32,8 +38,19 @@ export default function Interrogation({
     { id: 0, from: "suspect", text: script?.openingLine ?? "…", confronted: false },
   ]);
   const [evidenceOpen, setEvidenceOpen] = useState(false);
+  const [unlockToast, setUnlockToast] = useState<{ id: number; name: string } | null>(null);
   const nextId = useRef(1);
   const endRef = useRef<HTMLLIElement>(null);
+  const mounted = useRef(true);
+  const toastTimer = useRef<number | undefined>(undefined);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      window.clearTimeout(toastTimer.current);
+    };
+  }, []);
 
   // Keep the newest line in view. Instant scroll when reduced motion is requested.
   useEffect(() => {
@@ -78,6 +95,19 @@ export default function Interrogation({
       answer: q.confrontedAnswer!,
     });
     setEvidenceOpen(false);
+
+    // After the confront has played as usual, quietly ask whether it reveals a locked clue.
+    // Nothing waits on this, and only a new clue shows anything.
+    void onConfrontUnlock?.(suspect.id, q.unlockedByClueId!).then((clue) => {
+      if (!clue || !mounted.current) return;
+      const id = nextId.current++;
+      setMessages((prev) => [...prev, { id, from: "evidence", text: clue.name }]);
+      setUnlockToast({ id, name: clue.name });
+      window.clearTimeout(toastTimer.current);
+      toastTimer.current = window.setTimeout(() => {
+        if (mounted.current) setUnlockToast((t) => (t?.id === id ? null : t));
+      }, 2800);
+    });
   };
 
   const questions = script?.questions ?? [];
@@ -135,7 +165,11 @@ export default function Interrogation({
               // Scroll margin keeps the newest line clear of the bottom bar.
               className={`flex scroll-mb-28 flex-col ${m.from === "player" ? "items-end" : "items-start"}`}
             >
-              {m.from === "player" ? (
+              {m.from === "evidence" ? (
+                <p className="self-center rounded-full border border-brass/70 bg-brass-deep/60 px-4 py-2 text-center text-sm font-semibold text-brass">
+                  New evidence: {m.text}
+                </p>
+              ) : m.from === "player" ? (
                 <div
                   className={`max-w-[85%] rounded-2xl rounded-br-sm px-4 py-3 ${
                     m.evidence
@@ -265,6 +299,27 @@ export default function Interrogation({
           </>
         )}
       </section>
+
+      <div
+        role="status"
+        aria-live="polite"
+        className="pointer-events-none fixed inset-x-0 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-20 mx-auto w-full max-w-[480px] px-4"
+      >
+        {unlockToast && (
+          <div
+            key={unlockToast.id}
+            className="anim-toast flex items-center gap-3 rounded-xl border border-brass-dim bg-paper p-3 text-ink-900 shadow-xl shadow-black/50"
+          >
+            <span aria-hidden className="text-2xl">
+              🔓
+            </span>
+            <span>
+              <span className="block text-sm text-paper-ink">New evidence unlocked</span>
+              <span className="block font-display text-lg leading-tight">{unlockToast.name}</span>
+            </span>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

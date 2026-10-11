@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Accuse from "@/components/Accuse";
 import BottomNav, { type NavTab } from "@/components/BottomNav";
 import Casebook from "@/components/Casebook";
@@ -11,10 +11,12 @@ import Result from "@/components/Result";
 import SceneScreen from "@/components/SceneScreen";
 import Suspects from "@/components/Suspects";
 import { caseArt } from "@/data/art";
-import { listCases } from "@/data/cases";
+import { hasLockedClues, listCases } from "@/data/cases";
+import { requestConfrontUnlock } from "@/lib/api";
 import {
   clearProgress,
   emptyProgress,
+  addUnlockedClue,
   heldClues,
   loadCase,
   readProgress,
@@ -24,6 +26,7 @@ import {
   type LoadedCase,
 } from "@/lib/game";
 import { readIntroSeen, shouldShowIntro, writeIntroSeen, type IntroStep } from "@/lib/intro";
+import { createUnlocker, type Unlocker } from "@/lib/unlocker";
 import {
   bestResult,
   caseStatus,
@@ -78,6 +81,8 @@ export default function Game() {
   const [savedResult, setSavedResult] = useState<SavedResult | null>(null);
   // Display-only career record from localStorage; never used for scoring.
   const [record, setRecord] = useState<PlayerRecord>(emptyRecord);
+  // Unlocked clues the player hasn't seen in the Casebook yet (shown as "New").
+  const [newClueIds, setNewClueIds] = useState<string[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -140,6 +145,35 @@ export default function Game() {
     [activeCase],
   );
 
+  // Locked clues: only cases flagged in src/data/cases.ts ever ask the server.
+  const progressRef = useRef(progress);
+  useEffect(() => {
+    progressRef.current = progress;
+  }, [progress]);
+  const caseId = bundle?.caseData.id ?? null;
+  const unlocksOn = activeCase !== null && hasLockedClues(activeCase);
+  // One unlocker per game: reset when the case changes or on Play again, so a new game
+  // asks about each confront afresh. Created and used only from the confront event.
+  const unlockerRef = useRef<{ caseId: string; unlocker: Unlocker } | null>(null);
+  const attemptUnlock = (suspectId: string, clueId: string) => {
+    if (!unlocksOn || caseId === null) return Promise.resolve(null);
+    if (unlockerRef.current?.caseId !== caseId) {
+      unlockerRef.current = {
+        caseId,
+        unlocker: createUnlocker({
+          enabled: true,
+          request: (s, c, held) => requestConfrontUnlock(caseId, s, c, held),
+          heldUnlockedIds: () => (progressRef.current.unlockedClues ?? []).map((u) => u.id),
+          onUnlocked: (clue) => {
+            updateProgress((prev) => addUnlockedClue(prev, clue));
+            setNewClueIds((prev) => (prev.includes(clue.id) ? prev : [...prev, clue.id]));
+          },
+        }),
+      };
+    }
+    return unlockerRef.current.unlocker.attempt(suspectId, clueId);
+  };
+
   const collectClue = useCallback(
     (clueId: string) =>
       updateProgress((prev) =>
@@ -163,6 +197,8 @@ export default function Game() {
   const playAgain = () => {
     if (activeCase === null) return;
     clearProgress(activeCase);
+    setNewClueIds([]);
+    unlockerRef.current = null;
     setProgress(emptyProgress);
     setSavedResult(null);
     setScreen({ name: "home" });
@@ -195,6 +231,8 @@ export default function Game() {
     const saved = n === activeCase ? savedResult : readResult(n);
     if (n !== activeCase) {
       setBundle(null);
+      setNewClueIds([]);
+      unlockerRef.current = null;
       setCaseNumber(n);
     }
     setScreen(saved ? { name: "result", saved } : { name: "scene" });
@@ -242,7 +280,11 @@ export default function Game() {
         <BottomNav
           active={navTab}
           casebookCount={progress.foundClueIds.length + progress.contradictions.length}
-          onNavigate={(tab) => setScreen(navScreens[tab])}
+          onNavigate={(tab) => {
+            // Leaving the Casebook means its new clues have been seen.
+            if (screen.name === "casebook") setNewClueIds([]);
+            setScreen(navScreens[tab]);
+          }}
         />
       )}
     </>
@@ -305,13 +347,14 @@ export default function Game() {
             heldClues={heldClues(bundle, progress)}
             progress={progress}
             onContradiction={logContradiction}
+            onConfrontUnlock={unlocksOn ? attemptUnlock : undefined}
             onBack={() => setScreen({ name: "suspects" })}
           />
         );
       }
 
       case "casebook":
-        return <Casebook bundle={bundle} art={art} progress={progress} />;
+        return <Casebook bundle={bundle} art={art} progress={progress} newClueIds={newClueIds} />;
 
       case "accuse":
         return (
