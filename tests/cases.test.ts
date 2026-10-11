@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { caseArt } from "@/data/art";
 import { case1Art } from "@/data/case1-art";
 import { case1Fallback } from "@/data/case1-fallback";
+import { case2Fallback } from "@/data/case2-fallback";
 import { CASE_NUMBERS, caseFallback, listCases } from "@/data/cases";
 import { emptyRecord, recordVerdict, todaysCase } from "@/lib/record";
 import type { CaseBundle } from "@/lib/types";
@@ -26,13 +27,18 @@ describe("case lookup by number", () => {
     }
   });
 
-  it("lists Cases 1 to 3 in order, with only Case 1 playable today", () => {
+  it("lists Cases 1 to 3 in order, with Cases 1 and 2 playable and Case 3 locked", () => {
     expect(CASE_NUMBERS).toEqual([1, 2, 3]);
     expect(listCases()).toEqual([
       { caseNumber: 1, title: "The Empty Stall", playable: true },
-      { caseNumber: 2, title: null, playable: false },
+      { caseNumber: 2, title: "The Second Buyer", playable: true },
       { caseNumber: 3, title: null, playable: false },
     ]);
+  });
+
+  it("finds Case 2's offline copy; it has no art yet", () => {
+    expect(caseFallback(2)).toBe(case2Fallback);
+    expect(caseArt(2)).toBeNull();
   });
 
   it("makes Case 2 playable once its data is in the code; Case 3 stays locked", () => {
