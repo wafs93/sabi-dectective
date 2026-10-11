@@ -6,7 +6,7 @@ import { Button, ScreenHeader, SectionLabel } from "@/components/ui";
 import { submitAccusation } from "@/lib/api";
 import { collectedClues, type LoadedCase } from "@/lib/game";
 import type { Progress, SavedResult } from "@/lib/types";
-import type { CaseArt } from "@/data/case1-art";
+import type { CaseArt } from "@/data/art";
 
 export default function Accuse({
   bundle,

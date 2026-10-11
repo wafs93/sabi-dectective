@@ -1,4 +1,4 @@
-import type { StaticImageData } from "next/image";
+import type { CaseArt } from "@/data/art";
 import { CASE1_CLUES, CASE1_SUSPECTS } from "@/data/case1-ids";
 import clueMuddyFootprint from "../../public/art/clue-muddy-footprint.jpg";
 import clueSecurityLog from "../../public/art/clue-security-log.jpg";
@@ -7,28 +7,7 @@ import portraitBisi from "../../public/art/portrait-alhaja-bisi.jpg";
 import portraitChuks from "../../public/art/portrait-chuks.jpg";
 import sceneEmptyStall from "../../public/art/scene-empty-stall.jpg";
 
-// Presentation only: art and hotspot positions for Case 1, keyed by id.
-// Nothing here says which suspect is guilty or which clues matter.
-
-export type Hotspot = {
-  clueId: string;
-  // Centre of the hotspot as a percentage of the scene image's width and height.
-  x: number;
-  y: number;
-  // Diameter as a percentage of the image width (never rendered below 44px).
-  size: number;
-  // What the player sees there before they know what it is.
-  label: string;
-};
-
-export type CaseArt = {
-  intro: string;
-  scene: StaticImageData;
-  sceneAlt: string;
-  hotspots: Hotspot[];
-  portraits: Record<string, StaticImageData>;
-  clues: Record<string, StaticImageData>;
-};
+// Case 1 art. Types and the lookup by case number live in art.ts.
 
 export const case1Art: CaseArt = {
   intro: "Mama Chidinma was attacked in her Ladipo Market stall and her cash box is gone. Find out who did it.",
@@ -69,9 +48,3 @@ export const case1Art: CaseArt = {
     [CASE1_CLUES.ledger]: clueWageLedger,
   },
 };
-
-const artByCaseNumber: Record<number, CaseArt> = { 1: case1Art };
-
-export function caseArt(caseNumber: number): CaseArt | null {
-  return artByCaseNumber[caseNumber] ?? null;
-}

@@ -89,6 +89,12 @@ export function caseStatus({
   return record.cases[String(caseNumber)]?.last ?? "new";
 }
 
+// The home screen's "Today's case": the first playable case with no verdict yet.
+// Once every playable case has one, the newest playable case stays on show.
+export function todaysCase(playable: readonly number[], record: PlayerRecord): number | null {
+  return playable.find((n) => !record.cases[String(n)]) ?? playable.at(-1) ?? null;
+}
+
 // Anything that doesn't look right is dropped rather than trusted.
 export function parseRecord(raw: unknown): PlayerRecord {
   if (typeof raw !== "object" || raw === null) return emptyRecord;

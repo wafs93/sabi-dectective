@@ -4,7 +4,7 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import Placeholder, { clueIcon } from "@/components/Placeholder";
 import { SectionLabel } from "@/components/ui";
-import type { CaseArt, Hotspot } from "@/data/case1-art";
+import type { CaseArt, Hotspot } from "@/data/art";
 import type { LoadedCase } from "@/lib/game";
 import type { Clue, Progress } from "@/lib/types";
 

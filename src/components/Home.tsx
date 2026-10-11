@@ -1,7 +1,17 @@
 import Image from "next/image";
-import type { CaseArt } from "@/data/case1-art";
+import type { CaseArt } from "@/data/art";
 import type { CaseStatus } from "@/lib/record";
-import type { CaseRow, ResultTier } from "@/lib/types";
+import type { ResultTier } from "@/lib/types";
+
+// One card on the home screen.
+export type HomeCase = {
+  caseNumber: number;
+  title: string | null;
+  art: CaseArt | null;
+  playable: boolean;
+  status: CaseStatus;
+  hasSavedResult: boolean;
+};
 
 const verdictLabel: Record<ResultTier, string> = {
   cracked: "Cracked",
@@ -18,32 +28,32 @@ const statusStyle: Record<CaseStatus, { label: string; chip: string }> = {
 };
 
 export default function Home({
-  caseData,
-  art,
-  status,
-  hasSavedResult,
+  cases,
+  todayCaseNumber,
   rank,
   solved,
   best,
   usingLocalData,
   onOpenCase,
 }: {
-  caseData: CaseRow;
-  art: CaseArt | null;
-  status: CaseStatus;
-  hasSavedResult: boolean;
+  cases: HomeCase[];
+  todayCaseNumber: number;
   rank: string;
   solved: number;
   best: ResultTier | null;
   usingLocalData: boolean;
-  onOpenCase: () => void;
+  onOpenCase: (caseNumber: number) => void;
 }) {
+  const today = cases.find((c) => c.caseNumber === todayCaseNumber && c.playable);
+  const others = cases.filter((c) => c !== today);
+  const art = today?.art ?? null;
+  const status = today?.status ?? "new";
   const action =
     status === "new"
       ? "Investigate the case"
       : status === "in-progress"
         ? "Continue the case"
-        : hasSavedResult
+        : today?.hasSavedResult
           ? "See the verdict"
           : "Play again";
   const chip = statusStyle[status];
@@ -95,83 +105,125 @@ export default function Home({
       </section>
 
       {/* Today's case */}
-      <section aria-labelledby="todays-case" className="flex flex-col gap-3 px-4 pt-6">
-        <h2 id="todays-case" className="font-display text-xl text-paper">
-          Today&apos;s case
-        </h2>
-        <button
-          type="button"
-          onClick={onOpenCase}
-          className="group overflow-hidden rounded-xl border border-brass-dim bg-ink-800 text-left transition-colors hover:border-brass"
-        >
-          {art && (
-            <div className="relative aspect-[16/7] w-full">
-              <Image
-                src={art.scene}
-                alt=""
-                fill
-                sizes="(max-width: 480px) 100vw, 480px"
-                className="object-cover object-[50%_70%]"
-              />
-              <span
-                className={`absolute right-3 top-3 rounded-full border px-3 py-1 text-sm font-semibold ${chip.chip}`}
-              >
-                {chip.label}
+      {today && (
+        <section aria-labelledby="todays-case" className="flex flex-col gap-3 px-4 pt-6">
+          <h2 id="todays-case" className="font-display text-xl text-paper">
+            Today&apos;s case
+          </h2>
+          <button
+            type="button"
+            onClick={() => onOpenCase(today.caseNumber)}
+            className="group overflow-hidden rounded-xl border border-brass-dim bg-ink-800 text-left transition-colors hover:border-brass"
+          >
+            {art && (
+              <div className="relative aspect-[16/7] w-full">
+                <Image
+                  src={art.scene}
+                  alt=""
+                  fill
+                  sizes="(max-width: 480px) 100vw, 480px"
+                  className="object-cover object-[50%_70%]"
+                />
+                <span
+                  className={`absolute right-3 top-3 rounded-full border px-3 py-1 text-sm font-semibold ${chip.chip}`}
+                >
+                  {chip.label}
+                </span>
+              </div>
+            )}
+            <div className="flex flex-col gap-2 p-4">
+              <p className="text-sm text-brass">Case {today.caseNumber}</p>
+              <p className="font-display text-2xl leading-tight text-paper">{today.title}</p>
+              {art?.intro && <p className="text-paper/90">{art.intro}</p>}
+              {!art && (
+                <p>
+                  Status: <span className="font-semibold">{chip.label}</span>
+                </p>
+              )}
+              <span className="mt-2 flex min-h-12 items-center justify-center rounded-lg bg-brass px-4 font-semibold text-ink-900 group-hover:bg-brass/90">
+                {action}
               </span>
             </div>
+          </button>
+          {usingLocalData && (
+            <p className="text-center text-sm text-muted">Offline case file (Supabase not connected).</p>
           )}
-          <div className="flex flex-col gap-2 p-4">
-            <p className="text-sm text-brass">Case {caseData.case_number}</p>
-            <p className="font-display text-2xl leading-tight text-paper">{caseData.title}</p>
-            {art?.intro && <p className="text-paper/90">{art.intro}</p>}
-            {!art && (
-              <p>
-                Status: <span className="font-semibold">{chip.label}</span>
-              </p>
-            )}
-            <span className="mt-2 flex min-h-12 items-center justify-center rounded-lg bg-brass px-4 font-semibold text-ink-900 group-hover:bg-brass/90">
-              {action}
-            </span>
-          </div>
-        </button>
-        {usingLocalData && (
-          <p className="text-center text-sm text-muted">Offline case file (Supabase not connected).</p>
-        )}
-      </section>
+        </section>
+      )}
 
-      {/* Locked cases */}
+      {/* The other cases: playable ones open, the rest are locked */}
       <section aria-labelledby="more-cases" className="flex flex-col gap-3 px-4 pt-6">
         <h2 id="more-cases" className="font-display text-xl text-paper">
           More cases
         </h2>
         <ul className="grid grid-cols-2 gap-3">
-          {[2, 3].map((n) => (
-            <li
-              key={n}
-              aria-label={`Case ${n}, locked, coming soon`}
-              className="flex min-h-28 flex-col items-start justify-between gap-3 rounded-xl border border-dashed border-ink-600 bg-ink-800/60 p-4 text-muted"
-            >
-              <svg
-                aria-hidden
-                viewBox="0 0 24 24"
-                className="h-6 w-6"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={1.8}
-                strokeLinecap="round"
-                strokeLinejoin="round"
+          {others.map(({ caseNumber: n, ...c }) =>
+            c.playable ? (
+              <li key={n}>
+                <OpenCaseCard
+                  caseNumber={n}
+                  title={c.title}
+                  status={c.status}
+                  onOpen={() => onOpenCase(n)}
+                />
+              </li>
+            ) : (
+              <li
+                key={n}
+                aria-label={`Case ${n}, locked, coming soon`}
+                className="flex min-h-28 flex-col items-start justify-between gap-3 rounded-xl border border-dashed border-ink-600 bg-ink-800/60 p-4 text-muted"
               >
-                <rect x="5" y="11" width="14" height="9" rx="2" />
-                <path d="M8 11V8a4 4 0 0 1 8 0v3" />
-              </svg>
-              <span>
-                <span className="block font-display text-lg text-paper/80">Case {n}</span>
-                <span className="block text-sm">Coming soon</span>
-              </span>
-            </li>
-          ))}
+                <svg
+                  aria-hidden
+                  viewBox="0 0 24 24"
+                  className="h-6 w-6"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={1.8}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <rect x="5" y="11" width="14" height="9" rx="2" />
+                  <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+                </svg>
+                <span>
+                  <span className="block font-display text-lg text-paper/80">Case {n}</span>
+                  <span className="block text-sm">Coming soon</span>
+                </span>
+              </li>
+            ),
+          )}
         </ul>
       </section>
     </div>
+  );
+}
+
+function OpenCaseCard({
+  caseNumber,
+  title,
+  status,
+  onOpen,
+}: {
+  caseNumber: number;
+  title: string | null;
+  status: CaseStatus;
+  onOpen: () => void;
+}) {
+  const chip = statusStyle[status];
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="flex min-h-28 w-full flex-col items-start justify-between gap-3 rounded-xl border border-brass-dim bg-ink-800 p-4 text-left transition-colors hover:border-brass"
+    >
+      <span className={`rounded-full border px-3 py-1 text-sm font-semibold ${chip.chip}`}>
+        {chip.label}
+      </span>
+      <span className="min-w-0">
+        <span className="block font-display text-lg text-paper">Case {caseNumber}</span>
+        {title && <span className="block text-sm text-paper/80">{title}</span>}
+      </span>
+    </button>
   );
 }
