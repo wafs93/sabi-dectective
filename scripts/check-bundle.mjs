@@ -1,30 +1,151 @@
 // Run after `next build`. Confirms nothing that reveals the answer ships to the browser.
 // Scans every client file: .next/static plus the prerendered HTML/RSC payloads.
+// Covers every case: the answers come from each case_solutions insert in supabase/migrations.
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 const root = process.cwd();
-const sql = readFileSync(join(root, "supabase/migrations/002_private_solutions.sql"), "utf8");
-const seed = readFileSync(join(root, "supabase/seed.sql"), "utf8");
+const sqlIn = (dir) =>
+  existsSync(dir)
+    ? readdirSync(dir)
+        .filter((f) => f.endsWith(".sql"))
+        .sort()
+        .map((f) => readFileSync(join(dir, f), "utf8"))
+    : [];
+const migrations = sqlIn(join(root, "supabase/migrations"));
+// Seeds hold the public suspect and clue ids each case's answer must hide among.
+const allSql = [...migrations, ...sqlIn(join(root, "supabase"))];
 
-// Result texts: every quoted string in the 002 insert that isn't a uuid.
-// The values come in column order: title, text, title, text, title, text.
-const insert = sql.slice(sql.indexOf("insert into public.case_solutions"));
-const resultStrings = [...insert.matchAll(/'((?:[^']|'')+)'/g)]
-  .map((m) => m[1].replaceAll("''", "'"))
-  .filter((s) => !/^[0-9a-f-]{36}$/.test(s) && s !== "{}");
-// The three titles (Case Cracked / Close Call / Missed It) are outcome names every player
-// sees, and the home screen shows them as verdict labels; they reveal nothing about the answer.
-// The explanation texts do reveal it, so those must never ship.
-const resultTexts = resultStrings.filter((_, i) => i % 2 === 1);
-if (resultTexts.length !== 3) {
-  console.error(`Expected 3 result texts in 002, found ${resultTexts.length}. Update this script.`);
+// ---- A small SQL reader: enough for the plain inserts in our migrations and seeds ----
+
+// Quotes toggle string mode; an escaped '' toggles twice, so it stays inside the string.
+
+// Drops "--" comments outside strings, so an apostrophe in a comment can't confuse the reader.
+function stripComments(sql) {
+  let out = "";
+  let inString = false;
+  for (let i = 0; i < sql.length; i++) {
+    if (!inString && sql[i] === "-" && sql[i + 1] === "-") {
+      while (i < sql.length && sql[i] !== "\n") i++;
+    } else if (sql[i] === "'") inString = !inString;
+    out += sql[i] ?? "";
+  }
+  return out;
+}
+
+// Splits on top-level commas up to the bracket that closes `open`. Returns the parts and where it stopped.
+function readList(sql, open) {
+  const parts = [];
+  let depth = 0;
+  let inString = false;
+  let start = open + 1;
+  for (let i = open + 1; i < sql.length; i++) {
+    const c = sql[i];
+    if (c === "'") inString = !inString;
+    else if (inString) continue;
+    else if (c === "(" || c === "[") depth++;
+    else if ((c === ")" || c === "]") && depth > 0) depth--;
+    else if (depth === 0 && (c === ")" || c === ",")) {
+      parts.push(sql.slice(start, i).trim());
+      start = i + 1;
+      if (c === ")") return { parts, end: i };
+    }
+  }
+  throw new Error("Unclosed bracket in SQL");
+}
+
+// Every row of every `insert into [public.]<table> (columns) values (...), (...)`, as {column: raw value}.
+function insertRows(sql, table) {
+  sql = stripComments(sql);
+  const rows = [];
+  for (const m of sql.matchAll(new RegExp(`insert\\s+into\\s+(?:public\\.)?${table}\\s*\\(`, "gi"))) {
+    const cols = readList(sql, m.index + m[0].length - 1);
+    const columns = cols.parts.map((c) => c.toLowerCase());
+    let i = cols.end + 1;
+    const valuesAt = sql.slice(i).search(/\S/);
+    if (!/^values\b/i.test(sql.slice(i + valuesAt))) continue;
+    i += valuesAt + "values".length;
+    while (true) {
+      while (/\s/.test(sql[i])) i++;
+      if (sql[i] !== "(") break;
+      const values = readList(sql, i);
+      rows.push(Object.fromEntries(columns.map((c, k) => [c, values.parts[k] ?? ""])));
+      i = values.end + 1;
+      while (/\s/.test(sql[i])) i++;
+      if (sql[i] !== ",") break;
+      i++;
+    }
+  }
+  return rows;
+}
+
+const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+const uuids = (s) => [...new Set((s ?? "").toLowerCase().match(UUID) ?? [])];
+const sqlString = (v) => /^'([\s\S]*)'$/.exec(v ?? "")?.[1].replaceAll("''", "'") ?? null;
+
+// ---- The answers, per case ----
+
+// caseId -> { suspects: Set, clues: Set } of public ids. The answer ids are added in too.
+const cases = new Map();
+const caseIds = (caseId) => {
+  if (!cases.has(caseId)) cases.set(caseId, { suspects: new Set(), clues: new Set() });
+  return cases.get(caseId);
+};
+
+const resultTexts = new Set();
+let answerIdCount = 0;
+for (const sql of migrations) {
+  for (const row of insertRows(sql, "case_solutions")) {
+    const [caseId] = uuids(row.case_id);
+    const suspects = uuids(row.solution_suspect_id);
+    const clues = [...uuids(row.key_clue_ids), ...uuids(row.red_herring_clue_ids)];
+    // The *_title columns (Case Cracked / Close Call / Missed It) are outcome names every player
+    // sees, and the home screen shows them as verdict labels; they reveal nothing about the answer.
+    // The *_text explanations do reveal it, so those must never ship.
+    const texts = Object.entries(row)
+      .filter(([column]) => column.endsWith("_text"))
+      .map(([, value]) => sqlString(value))
+      .filter(Boolean);
+    if (!caseId || suspects.length === 0 || texts.length === 0) {
+      console.error("Could not read a case_solutions row in supabase/migrations. Update this script.");
+      process.exit(2);
+    }
+    for (const t of texts) resultTexts.add(t);
+    const ids = caseIds(caseId);
+    for (const id of suspects) ids.suspects.add(id);
+    for (const id of clues) ids.clues.add(id);
+    answerIdCount += suspects.length + clues.length;
+  }
+}
+if (resultTexts.size === 0 || answerIdCount === 0) {
+  console.error("Found no answer texts or answer ids in supabase/migrations. Update this script.");
   process.exit(2);
 }
-// Check a distinctive slice of each text (the "{accused}" text is split around the placeholder).
-const textNeedles = resultTexts.flatMap((t) =>
-  t.split("{accused}").map((part) => part.trim().slice(0, 60)).filter(Boolean),
-);
+
+for (const sql of allSql) {
+  for (const [table, kind] of [["suspects", "suspects"], ["clues", "clues"]]) {
+    for (const row of insertRows(sql, table)) {
+      const [id] = uuids(row.id);
+      const [caseId] = uuids(row.case_id);
+      if (id && caseId && cases.has(caseId)) caseIds(caseId)[kind].add(id);
+    }
+  }
+}
+
+// Check every run of 8 words in each text, so a leaked part of one is caught too
+// (the "{accused}" text is split around the placeholder).
+const RUN = 8;
+const textNeedles = [
+  ...new Set(
+    [...resultTexts].flatMap((t) =>
+      t.split("{accused}").flatMap((part) => {
+        const words = part.trim().split(/\s+/).filter(Boolean);
+        if (words.length <= RUN) return words.length ? [words.join(" ")] : [];
+        return words.slice(0, words.length - RUN + 1).map((_, i) => words.slice(i, i + RUN).join(" "));
+      }),
+    ),
+  ),
+];
 
 const fieldNeedles = [
   "solution_suspect_id",
@@ -39,12 +160,6 @@ const fieldNeedles = [
 ];
 
 const secretValues = [process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()].filter(Boolean);
-
-// Public ids: each one may appear (players see every suspect and clue), but the answer
-// must not be singled out, so a file holding one suspect/clue id must hold them all.
-const uuids = (s) => [...new Set(s.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g))];
-const suspectIds = uuids(seed).filter((id) => id.startsWith("22222222"));
-const clueIds = uuids(seed).filter((id) => id.startsWith("33333333"));
 
 function walk(dir, out = []) {
   if (!existsSync(dir)) return out;
@@ -69,20 +184,29 @@ if (clientFiles.length === 0) {
 const failures = [];
 for (const file of clientFiles) {
   const body = readFileSync(file, "utf8");
+  const lower = body.toLowerCase();
   const rel = file.slice(root.length + 1);
   for (const n of [...textNeedles, ...fieldNeedles]) {
     if (body.includes(n)) failures.push(`${rel}: contains "${n.slice(0, 50)}"`);
   }
   for (const v of secretValues) if (body.includes(v)) failures.push(`${rel}: contains the service role key value`);
-  for (const [label, ids] of [["suspect", suspectIds], ["clue", clueIds]]) {
-    const present = ids.filter((id) => body.includes(id));
-    if (present.length > 0 && present.length < ids.length) {
-      failures.push(`${rel}: contains only some ${label} ids (${present.length}/${ids.length}), which could single out the answer`);
+  // Public ids: each one may appear (players see every suspect and clue), but the answer
+  // must not be singled out, so a file holding one of a case's suspect/clue ids must hold them all.
+  for (const [caseId, groups] of cases) {
+    for (const [label, set] of [["suspect", groups.suspects], ["clue", groups.clues]]) {
+      const ids = [...set];
+      const present = ids.filter((id) => lower.includes(id));
+      if (present.length === 0) continue;
+      if (ids.length < 2) {
+        failures.push(`${rel}: contains a ${label} id for case ${caseId}, but its other ${label} ids aren't in supabase/*.sql, so this can't be shown to be safe`);
+      } else if (present.length < ids.length) {
+        failures.push(`${rel}: contains only some ${label} ids for case ${caseId} (${present.length}/${ids.length}), which could single out the answer`);
+      }
     }
   }
 }
 
-console.log(`Scanned ${clientFiles.length} client files for ${textNeedles.length} result-text snippets, ${fieldNeedles.length} answer field names${secretValues.length ? ", the service key value" : ""}, and answer-revealing id patterns.`);
+console.log(`Scanned ${clientFiles.length} client files for ${cases.size} case(s): ${textNeedles.length} result-text snippets, ${answerIdCount} answer ids, ${fieldNeedles.length} answer field names${secretValues.length ? ", the service key value" : ""}.`);
 if (failures.length) {
   console.error(`FAIL: ${failures.length} problem(s):\n` + failures.map((f) => `  - ${f}`).join("\n"));
   process.exit(1);

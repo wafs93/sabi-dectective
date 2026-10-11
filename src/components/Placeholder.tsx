@@ -1,5 +1,6 @@
 import Image, { type StaticImageData } from "next/image";
 import { CASE1_CLUES } from "@/data/case1-ids";
+import { CASE2_CLUES } from "@/data/case2-ids";
 
 type Aspect = "scene" | "portrait" | "icon";
 
@@ -82,6 +83,11 @@ const clueIcons: Record<string, string> = {
   [CASE1_CLUES.ledger]: "📄",
   [CASE1_CLUES.securityLog]: "📓",
   [CASE1_CLUES.footprint]: "👣",
+  [CASE2_CLUES.tollReceipt]: "🧾",
+  [CASE2_CLUES.secondAgreement]: "📜",
+  [CASE2_CLUES.keyLog]: "🔑",
+  [CASE2_CLUES.debtLetter]: "✉️",
+  [CASE2_CLUES.tornNote]: "📝",
 };
 
 export function clueIcon(clueId: string) {

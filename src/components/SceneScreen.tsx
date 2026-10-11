@@ -4,7 +4,7 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import Placeholder, { clueIcon } from "@/components/Placeholder";
 import { SectionLabel } from "@/components/ui";
-import type { CaseArt, Hotspot } from "@/data/case1-art";
+import type { CaseArt, Hotspot } from "@/data/art";
 import type { LoadedCase } from "@/lib/game";
 import type { Clue, Progress } from "@/lib/types";
 
@@ -88,7 +88,8 @@ export default function SceneScreen({
           />
           <div
             aria-hidden
-            className="anim-flicker pointer-events-none absolute left-[19.5%] top-[21%] h-[38%] w-[60%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(closest-side,rgb(255_196_110/0.35),transparent)] mix-blend-screen"
+            style={{ left: `${art.glow.x}%`, top: `${art.glow.y}%` }}
+            className="anim-flicker pointer-events-none absolute h-[38%] w-[60%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(closest-side,rgb(255_196_110/0.35),transparent)] mix-blend-screen"
           />
           {hotspots.map((h) => (
             <HotspotButton

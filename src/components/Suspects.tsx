@@ -1,6 +1,6 @@
 import Placeholder from "@/components/Placeholder";
 import { ScreenHeader } from "@/components/ui";
-import type { CaseArt } from "@/data/case1-art";
+import type { CaseArt } from "@/data/art";
 import type { LoadedCase } from "@/lib/game";
 
 export default function Suspects({

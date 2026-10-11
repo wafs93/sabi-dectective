@@ -1,6 +1,6 @@
 import Placeholder, { clueIcon } from "@/components/Placeholder";
 import { ScreenHeader, SectionLabel } from "@/components/ui";
-import type { CaseArt } from "@/data/case1-art";
+import type { CaseArt } from "@/data/art";
 import { collectedClues, type LoadedCase } from "@/lib/game";
 import type { Progress } from "@/lib/types";
 

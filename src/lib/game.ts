@@ -1,10 +1,8 @@
-import { case1Fallback } from "@/data/case1-fallback";
+import { caseFallback } from "@/data/cases";
 import { supabase } from "@/lib/supabase";
 import type { CaseBundle, Clue, Contradiction, Progress, SavedResult } from "@/lib/types";
 
 export type LoadedCase = CaseBundle & { source: "supabase" | "local" };
-
-const fallbacks: Record<number, CaseBundle> = { 1: case1Fallback };
 
 // Explicit columns: the public tables must never be asked for anything answer-related.
 const CASE_COLUMNS = "id, case_number, title, briefing_text, scene_image_url, release_date";
@@ -39,7 +37,7 @@ export async function loadCase(caseNumber: number): Promise<LoadedCase> {
   } catch (err) {
     console.warn("Could not load case from Supabase, using local data.", err);
   }
-  const local = fallbacks[caseNumber];
+  const local = caseFallback(caseNumber);
   if (!local) throw new Error(`Case ${caseNumber} not found.`);
   return { ...local, source: "local" };
 }

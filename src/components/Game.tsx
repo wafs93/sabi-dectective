@@ -4,13 +4,14 @@ import { useCallback, useEffect, useState } from "react";
 import Accuse from "@/components/Accuse";
 import BottomNav, { type NavTab } from "@/components/BottomNav";
 import Casebook from "@/components/Casebook";
-import Home from "@/components/Home";
+import Home, { type HomeCase } from "@/components/Home";
 import { ColdOpen, TitleScreen } from "@/components/Intro";
 import Interrogation from "@/components/Interrogation";
 import Result from "@/components/Result";
 import SceneScreen from "@/components/SceneScreen";
 import Suspects from "@/components/Suspects";
-import { caseArt } from "@/data/case1-art";
+import { caseArt } from "@/data/art";
+import { listCases } from "@/data/cases";
 import {
   clearProgress,
   emptyProgress,
@@ -30,6 +31,7 @@ import {
   rankFor,
   readRecord,
   recordVerdict,
+  todaysCase,
   writeRecord,
   type PlayerRecord,
 } from "@/lib/record";
@@ -61,7 +63,13 @@ const navTabFor: Partial<Record<Screen["name"], NavTab>> = {
   accuse: "accuse",
 };
 
-export default function Game({ caseNumber }: { caseNumber: number }) {
+const cases = listCases();
+const playableCases = cases.filter((c) => c.playable).map((c) => c.caseNumber);
+
+export default function Game() {
+  // The case the player opened from Home. null until they pick one: the game
+  // first opens on today's case.
+  const [caseNumber, setCaseNumber] = useState<number | null>(null);
   const [bundle, setBundle] = useState<LoadedCase | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [screen, setScreen] = useState<Screen>({ name: "home" });
@@ -72,31 +80,40 @@ export default function Game({ caseNumber }: { caseNumber: number }) {
 
   useEffect(() => {
     let cancelled = false;
-    loadCase(caseNumber)
+    let rec = readRecord();
+    // A game finished before the record existed still counts on the home screen.
+    let backfilled = false;
+    for (const n of playableCases) {
+      const saved = rec.cases[String(n)] ? null : readResult(n);
+      if (saved) {
+        rec = recordVerdict(rec, n, saved.result.outcome);
+        backfilled = true;
+      }
+    }
+    if (backfilled) writeRecord(rec);
+    const open = caseNumber ?? todaysCase(playableCases, rec);
+    if (open === null) return;
+    // First-time players get the opening; anyone with anything saved for any case goes
+    // straight Home. Decided once, on the first load only, never when switching cases.
+    const caseNumbers = cases.map((c) => c.caseNumber);
+    const showIntro =
+      caseNumber === null &&
+      shouldShowIntro({
+        introSeen: readIntroSeen(),
+        hasProgress: caseNumbers.some((n) => {
+          const p = readProgress(n);
+          return p.foundClueIds.length + p.contradictions.length > 0;
+        }),
+        hasSavedResult: caseNumbers.some((n) => readResult(n) !== null),
+        hasRecord: Object.keys(rec.cases).length > 0,
+      });
+    loadCase(open)
       .then((loaded) => {
         if (cancelled) return;
         setBundle(loaded);
-        const prog = readProgress(caseNumber);
-        setProgress(prog);
-        const saved = readResult(caseNumber);
-        setSavedResult(saved);
-        let rec = readRecord();
-        // First-time players get the opening; anyone with anything saved goes straight Home.
-        if (
-          shouldShowIntro({
-            introSeen: readIntroSeen(),
-            hasProgress: prog.foundClueIds.length + prog.contradictions.length > 0,
-            hasSavedResult: saved !== null,
-            hasRecord: Object.keys(rec.cases).length > 0,
-          })
-        ) {
-          setScreen({ name: "intro", step: "cold-open" });
-        }
-        // A game finished before the record existed still counts on the home screen.
-        if (saved && !rec.cases[String(caseNumber)]) {
-          rec = recordVerdict(rec, caseNumber, saved.result.outcome);
-          writeRecord(rec);
-        }
+        setProgress(readProgress(open));
+        setSavedResult(readResult(open));
+        if (showIntro) setScreen({ name: "intro", step: "cold-open" });
         setRecord(rec);
       })
       .catch((err: unknown) => {
@@ -107,15 +124,19 @@ export default function Game({ caseNumber }: { caseNumber: number }) {
     };
   }, [caseNumber]);
 
+  // The case on screen, once its file has loaded.
+  const activeCase = bundle?.caseData.case_number ?? null;
+
   const updateProgress = useCallback(
     (update: (prev: Progress) => Progress) => {
+      if (activeCase === null) return;
       setProgress((prev) => {
         const next = update(prev);
-        writeProgress(caseNumber, next);
+        writeProgress(activeCase, next);
         return next;
       });
     },
-    [caseNumber],
+    [activeCase],
   );
 
   const collectClue = useCallback(
@@ -139,17 +160,19 @@ export default function Game({ caseNumber }: { caseNumber: number }) {
   );
 
   const playAgain = () => {
-    clearProgress(caseNumber);
+    if (activeCase === null) return;
+    clearProgress(activeCase);
     setProgress(emptyProgress);
     setSavedResult(null);
     setScreen({ name: "home" });
   };
 
   const finishCase = (saved: SavedResult) => {
-    writeResult(caseNumber, saved);
+    if (activeCase === null) return;
+    writeResult(activeCase, saved);
     setSavedResult(saved);
     setRecord((prev) => {
-      const next = recordVerdict(prev, caseNumber, saved.result.outcome);
+      const next = recordVerdict(prev, activeCase, saved.result.outcome);
       writeRecord(next);
       return next;
     });
@@ -164,6 +187,33 @@ export default function Game({ caseNumber }: { caseNumber: number }) {
     writeIntroSeen();
     setScreen({ name: "intro", step: "title" });
   }, []);
+
+  // Opens a case from Home: its saved verdict if it has one, otherwise its scene.
+  // Another case's file is loaded first.
+  const openCase = (n: number) => {
+    const saved = n === activeCase ? savedResult : readResult(n);
+    if (n !== activeCase) {
+      setBundle(null);
+      setCaseNumber(n);
+    }
+    setScreen(saved ? { name: "result", saved } : { name: "scene" });
+  };
+
+  // What Home shows for each case. The open case uses what is on screen;
+  // the others read their saved game.
+  const homeCase = ({ caseNumber: n, title, playable }: (typeof cases)[number]): HomeCase => {
+    const active = n === activeCase;
+    const saved = !playable ? null : active ? savedResult : readResult(n);
+    const caseProgress = !playable ? emptyProgress : active ? progress : readProgress(n);
+    return {
+      caseNumber: n,
+      title: active && bundle ? bundle.caseData.title : title,
+      art: caseArt(n),
+      playable,
+      status: caseStatus({ caseNumber: n, savedResult: saved, progress: caseProgress, record }),
+      hasSavedResult: saved !== null,
+    };
+  };
 
   if (loadError) {
     return (
@@ -209,19 +259,16 @@ export default function Game({ caseNumber }: { caseNumber: number }) {
 
       case "home": {
         const solved = casesSolved(record);
+        const today = todaysCase(playableCases, record) ?? bundle.caseData.case_number;
         return (
           <Home
-            caseData={bundle.caseData}
-            art={art}
-            status={caseStatus({ caseNumber, savedResult, progress, record })}
-            hasSavedResult={savedResult !== null}
+            cases={cases.map(homeCase)}
+            todayCaseNumber={today}
             rank={rankFor(solved)}
             solved={solved}
             best={bestResult(record)}
-            usingLocalData={bundle.source === "local"}
-            onOpenCase={() =>
-              setScreen(savedResult ? { name: "result", saved: savedResult } : { name: "scene" })
-            }
+            usingLocalData={bundle.source === "local" && today === activeCase}
+            onOpenCase={openCase}
           />
         );
       }
