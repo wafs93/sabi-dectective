@@ -7,14 +7,23 @@ const root = process.cwd();
 const sql = readFileSync(join(root, "supabase/migrations/002_private_solutions.sql"), "utf8");
 const seed = readFileSync(join(root, "supabase/seed.sql"), "utf8");
 
-// Result titles and texts: every quoted string in the 002 insert that isn't a uuid.
+// Result texts: every quoted string in the 002 insert that isn't a uuid.
+// The values come in column order: title, text, title, text, title, text.
 const insert = sql.slice(sql.indexOf("insert into public.case_solutions"));
-const resultTexts = [...insert.matchAll(/'((?:[^']|'')+)'/g)]
+const resultStrings = [...insert.matchAll(/'((?:[^']|'')+)'/g)]
   .map((m) => m[1].replaceAll("''", "'"))
   .filter((s) => !/^[0-9a-f-]{36}$/.test(s) && s !== "{}");
-// Check a distinctive slice of each long text (the "{accused}" text is split around the placeholder).
+// The three titles (Case Cracked / Close Call / Missed It) are outcome names every player
+// sees, and the home screen shows them as verdict labels; they reveal nothing about the answer.
+// The explanation texts do reveal it, so those must never ship.
+const resultTexts = resultStrings.filter((_, i) => i % 2 === 1);
+if (resultTexts.length !== 3) {
+  console.error(`Expected 3 result texts in 002, found ${resultTexts.length}. Update this script.`);
+  process.exit(2);
+}
+// Check a distinctive slice of each text (the "{accused}" text is split around the placeholder).
 const textNeedles = resultTexts.flatMap((t) =>
-  t.length < 30 ? [t] : t.split("{accused}").map((part) => part.trim().slice(0, 60)).filter(Boolean),
+  t.split("{accused}").map((part) => part.trim().slice(0, 60)).filter(Boolean),
 );
 
 const fieldNeedles = [
