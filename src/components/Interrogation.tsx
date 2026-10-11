@@ -14,14 +14,15 @@ type Message =
 export default function Interrogation({
   suspect,
   portrait,
-  clues,
+  heldClues,
   progress,
   onContradiction,
   onBack,
 }: {
   suspect: Suspect;
   portrait?: StaticImageData;
-  clues: Clue[];
+  // The clues the player holds (see heldClues in src/lib/game.ts).
+  heldClues: Clue[];
   progress: Progress;
   onContradiction: (entry: Contradiction) => void;
   onBack: () => void;
@@ -41,7 +42,7 @@ export default function Interrogation({
     endRef.current?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "nearest" });
   }, [messages.length]);
 
-  const clueName = (id: string) => clues.find((c) => c.id === id)?.name ?? "Evidence";
+  const clueName = (id: string) => heldClues.find((c) => c.id === id)?.name ?? "Evidence";
 
   // Unchanged rule: a question can be confronted once its unlocking clue has been found.
   const canConfront = (q: InterrogationQuestion) =>
@@ -80,7 +81,7 @@ export default function Interrogation({
   };
 
   const questions = script?.questions ?? [];
-  const foundClues = clues.filter((c) => progress.foundClueIds.includes(c.id));
+  const foundClues = heldClues;
   const confrontable = questions.filter(canConfront);
   const logged = (q: InterrogationQuestion) =>
     progress.contradictions.some((c) => c.questionId === q.id);

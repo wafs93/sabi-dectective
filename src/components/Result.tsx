@@ -1,7 +1,7 @@
 import Image, { type StaticImageData } from "next/image";
 import { Button } from "@/components/ui";
-import type { LoadedCase } from "@/lib/game";
-import type { ResultTier, SavedResult } from "@/lib/types";
+import { heldClues, type LoadedCase } from "@/lib/game";
+import type { Progress, ResultTier, SavedResult } from "@/lib/types";
 
 // Outcome colours from the design tokens: brass, ivory, burgundy.
 const tierStyle: Record<ResultTier, { title: string; tint: string; rule: string }> = {
@@ -13,12 +13,14 @@ const tierStyle: Record<ResultTier, { title: string; tint: string; rule: string 
 export default function Result({
   bundle,
   saved,
+  progress,
   portrait,
   onPlayAgain,
   onHome,
 }: {
   bundle: LoadedCase;
   saved: SavedResult;
+  progress: Progress;
   portrait?: StaticImageData;
   onPlayAgain: () => void;
   onHome: () => void;
@@ -26,7 +28,7 @@ export default function Result({
   // Everything shown here came from the server's /api/accuse response.
   const { accusation, result } = saved;
   const accused = bundle.suspects.find((s) => s.id === accusation.suspectId);
-  const cited = bundle.clues.filter((c) => accusation.citedClueIds.includes(c.id));
+  const cited = heldClues(bundle, progress).filter((c) => accusation.citedClueIds.includes(c.id));
   const style = tierStyle[result.outcome] ?? tierStyle.missed;
   const portraitSrc = portrait ?? accused?.portrait_image_url ?? null;
 

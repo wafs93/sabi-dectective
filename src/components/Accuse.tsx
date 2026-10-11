@@ -4,7 +4,7 @@ import { useState } from "react";
 import Placeholder, { clueIcon } from "@/components/Placeholder";
 import { Button, ScreenHeader, SectionLabel } from "@/components/ui";
 import { submitAccusation } from "@/lib/api";
-import { collectedClues, type LoadedCase } from "@/lib/game";
+import { heldClues, type LoadedCase } from "@/lib/game";
 import type { Progress, SavedResult } from "@/lib/types";
 import type { CaseArt } from "@/data/art";
 
@@ -25,7 +25,7 @@ export default function Accuse({
   const [cited, setCited] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const clues = collectedClues(bundle.clues, progress);
+  const clues = heldClues(bundle, progress);
   const suspect = bundle.suspects.find((s) => s.id === suspectId);
 
   const toggle = (id: string) =>

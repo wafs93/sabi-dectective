@@ -49,8 +49,25 @@ export async function loadCase(caseNumber: number): Promise<LoadedCase> {
   return { ...local, source: "local" };
 }
 
-export function collectedClues(clues: Clue[], progress: Progress): Clue[] {
-  return clues.filter((c) => progress.foundClueIds.includes(c.id));
+// All the clues the player holds: the case's public clues they have found (in case order),
+// then the clues they have unlocked (in the order unlocked), shaped like public clues so any
+// screen can show them. A public clue wins over an unlocked one with the same id. Unlocked
+// entries are re-checked, so a malformed one is ignored. Display only: never used for scoring.
+// The scene and its "x of N found" count use bundle.clues instead: public clues only.
+export function heldClues(bundle: CaseBundle, progress: Progress): Clue[] {
+  const found = bundle.clues.filter((c) => progress.foundClueIds.includes(c.id));
+  const publicIds = new Set(bundle.clues.map((c) => c.id));
+  const unlocked: Clue[] = parseUnlockedClues(progress.unlockedClues)
+    .filter((c) => !publicIds.has(c.id))
+    .map((c) => ({
+      id: c.id,
+      case_id: bundle.caseData.id,
+      name: c.name,
+      // With no art-map entry, screens show this image path instead.
+      icon_image_url: c.icon_image_url,
+      found_description: c.found_description,
+    }));
+  return [...found, ...unlocked];
 }
 
 // ---- localStorage persistence ----

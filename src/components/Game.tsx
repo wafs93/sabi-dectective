@@ -15,6 +15,7 @@ import { listCases } from "@/data/cases";
 import {
   clearProgress,
   emptyProgress,
+  heldClues,
   loadCase,
   readProgress,
   readResult,
@@ -301,7 +302,7 @@ export default function Game() {
             key={suspect.id}
             suspect={suspect}
             portrait={art?.portraits[suspect.id]}
-            clues={bundle.clues}
+            heldClues={heldClues(bundle, progress)}
             progress={progress}
             onContradiction={logContradiction}
             onBack={() => setScreen({ name: "suspects" })}
@@ -328,6 +329,7 @@ export default function Game() {
           <Result
             bundle={bundle}
             saved={screen.saved}
+            progress={progress}
             portrait={art?.portraits[screen.saved.accusation.suspectId]}
             onPlayAgain={playAgain}
             onHome={goHome}

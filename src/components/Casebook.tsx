@@ -1,7 +1,7 @@
 import Placeholder, { clueIcon } from "@/components/Placeholder";
 import { ScreenHeader, SectionLabel } from "@/components/ui";
 import type { CaseArt } from "@/data/art";
-import { collectedClues, type LoadedCase } from "@/lib/game";
+import { heldClues, type LoadedCase } from "@/lib/game";
 import type { Progress } from "@/lib/types";
 
 export default function Casebook({
@@ -13,7 +13,7 @@ export default function Casebook({
   art: CaseArt | null;
   progress: Progress;
 }) {
-  const clues = collectedClues(bundle.clues, progress);
+  const clues = heldClues(bundle, progress);
 
   return (
     <div className="flex flex-1 flex-col">
