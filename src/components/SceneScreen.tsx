@@ -15,11 +15,13 @@ export default function SceneScreen({
   art,
   progress,
   onCollectClue,
+  onHome,
 }: {
   bundle: LoadedCase;
   art: CaseArt | null;
   progress: Progress;
   onCollectClue: (clueId: string) => void;
+  onHome: () => void;
 }) {
   const [flashId, setFlashId] = useState<string | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
@@ -52,7 +54,14 @@ export default function SceneScreen({
 
   return (
     <div className="flex flex-1 flex-col">
-      <header className="px-4 pb-3 pt-[max(1rem,env(safe-area-inset-top))]">
+      <header className="px-4 pb-3 pt-[max(0.5rem,env(safe-area-inset-top))]">
+        <button
+          type="button"
+          onClick={onHome}
+          className="-ml-2 flex min-h-11 items-center px-2 text-sm font-semibold text-muted hover:text-brass"
+        >
+          ← Home
+        </button>
         <p className="text-sm text-brass">Case {bundle.caseData.case_number}</p>
         <h1 className="font-display text-3xl leading-tight text-paper">{bundle.caseData.title}</h1>
         <details className="group mt-2">

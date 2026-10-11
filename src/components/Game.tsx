@@ -4,10 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import Accuse from "@/components/Accuse";
 import BottomNav, { type NavTab } from "@/components/BottomNav";
 import Casebook from "@/components/Casebook";
+import Home from "@/components/Home";
 import Interrogation from "@/components/Interrogation";
 import Result from "@/components/Result";
 import SceneScreen from "@/components/SceneScreen";
-import StartScreen from "@/components/StartScreen";
 import Suspects from "@/components/Suspects";
 import { caseArt } from "@/data/case1-art";
 import {
@@ -20,10 +20,21 @@ import {
   writeResult,
   type LoadedCase,
 } from "@/lib/game";
+import {
+  bestResult,
+  caseStatus,
+  casesSolved,
+  emptyRecord,
+  rankFor,
+  readRecord,
+  recordVerdict,
+  writeRecord,
+  type PlayerRecord,
+} from "@/lib/record";
 import type { Contradiction, Progress, SavedResult } from "@/lib/types";
 
 type Screen =
-  | { name: "start" }
+  | { name: "home" }
   | { name: "scene" }
   | { name: "suspects" }
   | { name: "interrogate"; suspectId: string }
@@ -50,8 +61,11 @@ const navTabFor: Partial<Record<Screen["name"], NavTab>> = {
 export default function Game({ caseNumber }: { caseNumber: number }) {
   const [bundle, setBundle] = useState<LoadedCase | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [screen, setScreen] = useState<Screen>({ name: "start" });
+  const [screen, setScreen] = useState<Screen>({ name: "home" });
   const [progress, setProgress] = useState<Progress>(emptyProgress);
+  const [savedResult, setSavedResult] = useState<SavedResult | null>(null);
+  // Display-only career record from localStorage; never used for scoring.
+  const [record, setRecord] = useState<PlayerRecord>(emptyRecord);
 
   useEffect(() => {
     let cancelled = false;
@@ -61,7 +75,14 @@ export default function Game({ caseNumber }: { caseNumber: number }) {
         setBundle(loaded);
         setProgress(readProgress(caseNumber));
         const saved = readResult(caseNumber);
-        if (saved) setScreen({ name: "result", saved });
+        setSavedResult(saved);
+        let rec = readRecord();
+        // A game finished before the record existed still counts on the home screen.
+        if (saved && !rec.cases[String(caseNumber)]) {
+          rec = recordVerdict(rec, caseNumber, saved.result.outcome);
+          writeRecord(rec);
+        }
+        setRecord(rec);
       })
       .catch((err: unknown) => {
         if (!cancelled) setLoadError(err instanceof Error ? err.message : "Could not load case.");
@@ -105,8 +126,22 @@ export default function Game({ caseNumber }: { caseNumber: number }) {
   const playAgain = () => {
     clearProgress(caseNumber);
     setProgress(emptyProgress);
-    setScreen({ name: "start" });
+    setSavedResult(null);
+    setScreen({ name: "home" });
   };
+
+  const finishCase = (saved: SavedResult) => {
+    writeResult(caseNumber, saved);
+    setSavedResult(saved);
+    setRecord((prev) => {
+      const next = recordVerdict(prev, caseNumber, saved.result.outcome);
+      writeRecord(next);
+      return next;
+    });
+    setScreen({ name: "result", saved });
+  };
+
+  const goHome = () => setScreen({ name: "home" });
 
   if (loadError) {
     return (
@@ -143,20 +178,34 @@ export default function Game({ caseNumber }: { caseNumber: number }) {
   function renderScreen() {
     if (!bundle) return null;
     switch (screen.name) {
-      case "start":
+      case "home": {
+        const solved = casesSolved(record);
         return (
-          <StartScreen
+          <Home
             caseData={bundle.caseData}
             art={art}
-            hasProgress={progress.foundClueIds.length + progress.contradictions.length > 0}
+            status={caseStatus({ caseNumber, savedResult, progress, record })}
+            hasSavedResult={savedResult !== null}
+            rank={rankFor(solved)}
+            solved={solved}
+            best={bestResult(record)}
             usingLocalData={bundle.source === "local"}
-            onStart={() => setScreen({ name: "scene" })}
+            onOpenCase={() =>
+              setScreen(savedResult ? { name: "result", saved: savedResult } : { name: "scene" })
+            }
           />
         );
+      }
 
       case "scene":
         return (
-          <SceneScreen bundle={bundle} art={art} progress={progress} onCollectClue={collectClue} />
+          <SceneScreen
+            bundle={bundle}
+            art={art}
+            progress={progress}
+            onCollectClue={collectClue}
+            onHome={goHome}
+          />
         );
 
       case "suspects":
@@ -194,10 +243,7 @@ export default function Game({ caseNumber }: { caseNumber: number }) {
             art={art}
             progress={progress}
             onBack={() => setScreen({ name: "scene" })}
-            onResult={(saved) => {
-              writeResult(caseNumber, saved);
-              setScreen({ name: "result", saved });
-            }}
+            onResult={finishCase}
           />
         );
 
@@ -208,6 +254,7 @@ export default function Game({ caseNumber }: { caseNumber: number }) {
             saved={screen.saved}
             portrait={art?.portraits[screen.saved.accusation.suspectId]}
             onPlayAgain={playAgain}
+            onHome={goHome}
           />
         );
     }

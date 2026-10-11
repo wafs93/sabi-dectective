@@ -15,11 +15,13 @@ export default function Result({
   saved,
   portrait,
   onPlayAgain,
+  onHome,
 }: {
   bundle: LoadedCase;
   saved: SavedResult;
   portrait?: StaticImageData;
   onPlayAgain: () => void;
+  onHome: () => void;
 }) {
   // Everything shown here came from the server's /api/accuse response.
   const { accusation, result } = saved;
@@ -85,9 +87,14 @@ export default function Result({
           </p>
         </div>
 
-        <Button onClick={onPlayAgain} className="mt-auto text-center text-base">
-          Play again
-        </Button>
+        <div className="mt-auto flex flex-col gap-2">
+          <Button onClick={onPlayAgain} className="text-center text-base">
+            Play again
+          </Button>
+          <Button variant="ghost" onClick={onHome} className="text-center text-base">
+            Back to home
+          </Button>
+        </div>
       </div>
     </div>
   );
