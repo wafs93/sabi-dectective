@@ -98,6 +98,66 @@ body {
 .reveal-text { animation: reveal-up 450ms ease-out 850ms backwards; }
 .reveal-summary { animation: reveal-up 450ms ease-out 1050ms backwards; }
 
+/* ---- Opening sequence ----
+   Every element's resting style is its final state, so with reduced motion
+   (animations off) everything simply shows, fully visible and still. */
+@keyframes intro-camera {
+  from { transform: scale(1.18) translate3d(2%, 3%, 0); }
+  to { transform: scale(1.06) translate3d(-2%, -1%, 0); }
+}
+@keyframes intro-camera-close {
+  from { transform: scale(1.12); }
+  to { transform: scale(1); }
+}
+@keyframes intro-emerge {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@keyframes intro-dawn {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+@keyframes intro-haze {
+  from { transform: translateX(-12%); }
+  to { transform: translateX(12%); }
+}
+@keyframes intro-line {
+  0% { opacity: 0; transform: translateY(8px); }
+  20%, 80% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-4px); }
+}
+@keyframes title-reveal {
+  from { opacity: 0; transform: scale(0.96); letter-spacing: 0.3em; }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes grain {
+  0% { transform: translate(0, 0); }
+  25% { transform: translate(-3%, 2%); }
+  50% { transform: translate(2%, -3%); }
+  75% { transform: translate(-2%, -2%); }
+  100% { transform: translate(0, 0); }
+}
+
+.intro-camera { animation: intro-camera 16s ease-out both; }
+.intro-camera-close { animation: intro-camera-close 6s ease-out both; }
+.intro-emerge { opacity: 0; animation: intro-emerge 3s ease-out backwards; }
+.intro-dawn { animation: intro-dawn 9s ease-in-out infinite; }
+.intro-haze { animation: intro-haze 14s ease-in-out infinite alternate; }
+.intro-line { animation: intro-line 2800ms ease-in-out both; }
+.title-reveal { animation: title-reveal 1100ms ease-out backwards; }
+.title-reveal-late { animation: reveal-up 600ms ease-out 700ms backwards; }
+
+.film-grain::after {
+  content: "";
+  position: absolute;
+  inset: -10%;
+  pointer-events: none;
+  opacity: 0.12;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  animation: grain 0.9s steps(4) infinite;
+}
+
 .anim-drift { animation: scene-drift 40s ease-in-out infinite alternate; }
 .anim-flicker { animation: lamp-flicker 5s ease-in-out infinite; }
 .anim-breathe { animation: hotspot-breathe 2.8s ease-in-out infinite; }

@@ -5,6 +5,7 @@ import Accuse from "@/components/Accuse";
 import BottomNav, { type NavTab } from "@/components/BottomNav";
 import Casebook from "@/components/Casebook";
 import Home from "@/components/Home";
+import { ColdOpen, TitleScreen } from "@/components/Intro";
 import Interrogation from "@/components/Interrogation";
 import Result from "@/components/Result";
 import SceneScreen from "@/components/SceneScreen";
@@ -20,6 +21,7 @@ import {
   writeResult,
   type LoadedCase,
 } from "@/lib/game";
+import { readIntroSeen, shouldShowIntro, writeIntroSeen, type IntroStep } from "@/lib/intro";
 import {
   bestResult,
   caseStatus,
@@ -34,6 +36,7 @@ import {
 import type { Contradiction, Progress, SavedResult } from "@/lib/types";
 
 type Screen =
+  | { name: "intro"; step: IntroStep }
   | { name: "home" }
   | { name: "scene" }
   | { name: "suspects" }
@@ -73,10 +76,22 @@ export default function Game({ caseNumber }: { caseNumber: number }) {
       .then((loaded) => {
         if (cancelled) return;
         setBundle(loaded);
-        setProgress(readProgress(caseNumber));
+        const prog = readProgress(caseNumber);
+        setProgress(prog);
         const saved = readResult(caseNumber);
         setSavedResult(saved);
         let rec = readRecord();
+        // First-time players get the opening; anyone with anything saved goes straight Home.
+        if (
+          shouldShowIntro({
+            introSeen: readIntroSeen(),
+            hasProgress: prog.foundClueIds.length + prog.contradictions.length > 0,
+            hasSavedResult: saved !== null,
+            hasRecord: Object.keys(rec.cases).length > 0,
+          })
+        ) {
+          setScreen({ name: "intro", step: "cold-open" });
+        }
         // A game finished before the record existed still counts on the home screen.
         if (saved && !rec.cases[String(caseNumber)]) {
           rec = recordVerdict(rec, caseNumber, saved.result.outcome);
@@ -143,6 +158,13 @@ export default function Game({ caseNumber }: { caseNumber: number }) {
 
   const goHome = () => setScreen({ name: "home" });
 
+  // Reaching the title (by watching or skipping) counts as having seen the intro.
+  // Only the intro flag is written; progress and the record are never touched.
+  const reachTitle = useCallback(() => {
+    writeIntroSeen();
+    setScreen({ name: "intro", step: "title" });
+  }, []);
+
   if (loadError) {
     return (
       <div className="flex flex-1 items-center justify-center p-6 text-center text-muted">
@@ -178,6 +200,13 @@ export default function Game({ caseNumber }: { caseNumber: number }) {
   function renderScreen() {
     if (!bundle) return null;
     switch (screen.name) {
+      case "intro":
+        return screen.step === "cold-open" ? (
+          <ColdOpen onDone={reachTitle} />
+        ) : (
+          <TitleScreen onOpenCaseFile={goHome} />
+        );
+
       case "home": {
         const solved = casesSolved(record);
         return (
