@@ -13,6 +13,8 @@ export type ScoringData = {
   solution: CaseSolution;
   suspects: { id: string; name: string }[];
   clueIds: string[];
+  // The case's locked clues: once unlocked, a player may cite them too.
+  lockedClueIds?: string[];
 };
 
 export type AccuseDeps = {
@@ -94,7 +96,7 @@ export function createAccuseHandler(deps: AccuseDeps) {
 
       const suspect = data.suspects.find((s) => s.id === suspectId);
       if (!suspect) return json(400, { error: "Unknown suspect for this case." });
-      const caseClues = new Set(data.clueIds);
+      const caseClues = new Set([...data.clueIds, ...(data.lockedClueIds ?? [])]);
       if (!clueIds.every((id) => caseClues.has(id))) {
         return json(400, { error: "Unknown clue for this case." });
       }

@@ -1,6 +1,7 @@
 import "server-only";
 import { createClient } from "@supabase/supabase-js";
 import type { ScoringData } from "@/server/accuse";
+import { loadLockedClueIds } from "@/server/locked";
 
 type SolutionRow = {
   solution_suspect_id: string;
@@ -25,10 +26,11 @@ export async function loadScoringData(caseId: string): Promise<ScoringData | nul
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  const [solutionRes, suspectsRes, cluesRes] = await Promise.all([
+  const [solutionRes, suspectsRes, cluesRes, lockedClueIds] = await Promise.all([
     db.from("case_solutions").select("*").eq("case_id", caseId).maybeSingle<SolutionRow>(),
     db.from("suspects").select("id, name").eq("case_id", caseId),
     db.from("clues").select("id").eq("case_id", caseId),
+    loadLockedClueIds(db, caseId),
   ]);
   if (solutionRes.error) throw new Error(`case_solutions: ${solutionRes.error.message}`);
   if (suspectsRes.error) throw new Error(`suspects: ${suspectsRes.error.message}`);
@@ -50,5 +52,6 @@ export async function loadScoringData(caseId: string): Promise<ScoringData | nul
     },
     suspects: suspectsRes.data,
     clueIds: cluesRes.data.map((c) => c.id),
+    lockedClueIds,
   };
 }
