@@ -14,6 +14,8 @@ export const case1Art: CaseArt = {
   scene: sceneEmptyStall,
   sceneAlt:
     "Mama Chidinma's stall at night: a lantern over the counter, an overturned basket, and muddy boot prints leading out through an open back door.",
+  // The lantern over the counter.
+  glow: { x: 19.5, y: 21 },
   // Positions set by eye from the 768x1152 scene image.
   hotspots: [
     {

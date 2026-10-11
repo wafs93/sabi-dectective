@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { CASE1_CLUES, CASE1_ID, CASE1_SUSPECTS } from "@/data/case1-ids";
+import { case2Art } from "@/data/case2-art";
 import { case2Fallback } from "@/data/case2-fallback";
 import { CASE2_CLUES, CASE2_ID, CASE2_SUSPECTS } from "@/data/case2-ids";
 import { interrogations } from "@/data/interrogations";
@@ -167,5 +168,43 @@ describe("Case 2 answer (migration 006, read on the server only)", () => {
     expect(solutionSql).not.toContain(CASE1_ID);
     expect(publicSql).not.toContain(CASE1_ID);
     for (const v of solutionValues) expect(seedSql).toContain(v.replace(/,$/, ""));
+  });
+});
+
+describe("Case 2 art", () => {
+  it("has a portrait for every suspect and an image for every clue, keyed by id", () => {
+    expect(Object.keys(case2Art.portraits).sort()).toEqual(Object.values(CASE2_SUSPECTS).sort());
+    expect(Object.keys(case2Art.clues).sort()).toEqual(Object.values(CASE2_CLUES).sort());
+  });
+
+  it("has one hotspot per clue, inside the scene", () => {
+    const ids = case2Art.hotspots.map((h) => h.clueId);
+    expect(ids.sort()).toEqual(Object.values(CASE2_CLUES).sort());
+    for (const h of case2Art.hotspots) {
+      expect(h.x).toBeGreaterThan(5);
+      expect(h.x).toBeLessThan(95);
+      expect(h.y).toBeGreaterThan(5);
+      expect(h.y).toBeLessThan(95);
+      expect(h.label).toBeTruthy();
+    }
+  });
+
+  it("keeps hotspots from overlapping on the narrowest phone (360px wide scene, 2:3)", () => {
+    const width = 360;
+    const height = width * 1.5;
+    const diameter = (size: number) => Math.max(44, (size / 100) * width);
+    const spots = case2Art.hotspots;
+    for (let i = 0; i < spots.length; i++) {
+      for (let j = i + 1; j < spots.length; j++) {
+        const [a, b] = [spots[i], spots[j]];
+        const distance = Math.hypot(((a.x - b.x) / 100) * width, ((a.y - b.y) / 100) * height);
+        expect(distance).toBeGreaterThan((diameter(a.size) + diameter(b.size)) / 2);
+      }
+    }
+  });
+
+  it("gives Home an intro line that doesn't name the culprit", () => {
+    expect(case2Art.intro).toBeTruthy();
+    expect(case2Art.intro).not.toMatch(/Kunle|Balogun|lawyer|Barrister/i);
   });
 });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { caseArt } from "@/data/art";
 import { case1Art } from "@/data/case1-art";
+import { case2Art } from "@/data/case2-art";
 import { case1Fallback } from "@/data/case1-fallback";
 import { case2Fallback } from "@/data/case2-fallback";
 import { CASE_NUMBERS, caseFallback, listCases } from "@/data/cases";
@@ -36,9 +37,9 @@ describe("case lookup by number", () => {
     ]);
   });
 
-  it("finds Case 2's offline copy; it has no art yet", () => {
+  it("finds Case 2's offline copy and art", () => {
     expect(caseFallback(2)).toBe(case2Fallback);
-    expect(caseArt(2)).toBeNull();
+    expect(caseArt(2)).toBe(case2Art);
   });
 
   it("makes Case 2 playable once its data is in the code; Case 3 stays locked", () => {

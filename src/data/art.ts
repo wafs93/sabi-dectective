@@ -1,5 +1,6 @@
 import type { StaticImageData } from "next/image";
 import { case1Art } from "@/data/case1-art";
+import { case2Art } from "@/data/case2-art";
 
 // Presentation only: art and hotspot positions for each case, keyed by id.
 // Nothing here says which suspect is guilty or which clues matter.
@@ -19,12 +20,14 @@ export type CaseArt = {
   intro: string;
   scene: StaticImageData;
   sceneAlt: string;
+  // Centre of the flickering light over the scene, as a percentage of its width and height.
+  glow: { x: number; y: number };
   hotspots: Hotspot[];
   portraits: Record<string, StaticImageData>;
   clues: Record<string, StaticImageData>;
 };
 
-const artByCaseNumber: Record<number, CaseArt> = { 1: case1Art };
+const artByCaseNumber: Record<number, CaseArt> = { 1: case1Art, 2: case2Art };
 
 export function caseArt(caseNumber: number): CaseArt | null {
   return artByCaseNumber[caseNumber] ?? null;

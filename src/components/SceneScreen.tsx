@@ -88,7 +88,8 @@ export default function SceneScreen({
           />
           <div
             aria-hidden
-            className="anim-flicker pointer-events-none absolute left-[19.5%] top-[21%] h-[38%] w-[60%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(closest-side,rgb(255_196_110/0.35),transparent)] mix-blend-screen"
+            style={{ left: `${art.glow.x}%`, top: `${art.glow.y}%` }}
+            className="anim-flicker pointer-events-none absolute h-[38%] w-[60%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(closest-side,rgb(255_196_110/0.35),transparent)] mix-blend-screen"
           />
           {hotspots.map((h) => (
             <HotspotButton
