@@ -1,6 +1,7 @@
 // Run after `next build`. Confirms nothing that reveals the answer ships to the browser.
 // Scans every client file: .next/static plus the prerendered HTML/RSC payloads.
 // Covers every case: the answers come from each case_solutions insert in supabase/migrations.
+// Locked clues (locked_clues / clue_unlocks inserts in supabase/) must not ship at all.
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
@@ -10,7 +11,7 @@ const sqlIn = (dir) =>
     ? readdirSync(dir)
         .filter((f) => f.endsWith(".sql"))
         .sort()
-        .map((f) => readFileSync(join(dir, f), "utf8"))
+        .map((f) => ({ file: join(dir, f).slice(root.length + 1), sql: readFileSync(join(dir, f), "utf8") }))
     : [];
 const migrations = sqlIn(join(root, "supabase/migrations"));
 // Seeds hold the public suspect and clue ids each case's answer must hide among.
@@ -94,7 +95,7 @@ const caseIds = (caseId) => {
 
 const resultTexts = new Set();
 let answerIdCount = 0;
-for (const sql of migrations) {
+for (const { sql } of migrations) {
   for (const row of insertRows(sql, "case_solutions")) {
     const [caseId] = uuids(row.case_id);
     const suspects = uuids(row.solution_suspect_id);
@@ -122,7 +123,7 @@ if (resultTexts.size === 0 || answerIdCount === 0) {
   process.exit(2);
 }
 
-for (const sql of allSql) {
+for (const { sql } of allSql) {
   for (const [table, kind] of [["suspects", "suspects"], ["clues", "clues"]]) {
     for (const row of insertRows(sql, table)) {
       const [id] = uuids(row.id);
@@ -132,20 +133,54 @@ for (const sql of allSql) {
   }
 }
 
+// ---- Locked clues: hidden until the player unlocks them, so nothing about them may ship ----
+
+const lockedIds = new Set();
+const lockedTexts = new Set();
+// Names of two words or more are checked as exact phrases; one word is too common to tell apart.
+const lockedNames = new Set();
+// Random file names under /art/locked/.
+const lockedImages = new Set();
+for (const { file, sql } of allSql) {
+  for (const row of insertRows(sql, "locked_clues")) {
+    const [id] = uuids(row.id);
+    if (!id) {
+      console.error(`Could not read a locked_clues row in ${file}. Update this script.`);
+      process.exit(2);
+    }
+    lockedIds.add(id);
+    const name = sqlString(row.name)?.trim();
+    if (name && name.split(/\s+/).length >= 2) lockedNames.add(name);
+    const text = sqlString(row.found_description);
+    if (text) lockedTexts.add(text);
+    const image = sqlString(row.icon_image_url);
+    if (image) lockedImages.add(image.split("/").pop());
+  }
+  for (const row of insertRows(sql, "clue_unlocks")) {
+    for (const id of uuids(row.unlocks_clue_id)) lockedIds.add(id);
+  }
+}
+
+// In the SQL itself: a locked clue inserted into the public clues table is readable by anyone.
+const failures = [];
+for (const { file, sql } of allSql) {
+  for (const row of insertRows(sql, "clues")) {
+    for (const id of uuids(row.id)) {
+      if (lockedIds.has(id)) failures.push(`${file}: inserts locked clue ${id} into the public clues table`);
+    }
+  }
+}
+
 // Check every run of 8 words in each text, so a leaked part of one is caught too
 // (the "{accused}" text is split around the placeholder).
 const RUN = 8;
-const textNeedles = [
-  ...new Set(
-    [...resultTexts].flatMap((t) =>
-      t.split("{accused}").flatMap((part) => {
-        const words = part.trim().split(/\s+/).filter(Boolean);
-        if (words.length <= RUN) return words.length ? [words.join(" ")] : [];
-        return words.slice(0, words.length - RUN + 1).map((_, i) => words.slice(i, i + RUN).join(" "));
-      }),
-    ),
-  ),
-];
+const wordRuns = (text) =>
+  text.split("{accused}").flatMap((part) => {
+    const words = part.trim().split(/\s+/).filter(Boolean);
+    if (words.length <= RUN) return words.length ? [words.join(" ")] : [];
+    return words.slice(0, words.length - RUN + 1).map((_, i) => words.slice(i, i + RUN).join(" "));
+  });
+const textNeedles = [...new Set([...resultTexts, ...lockedTexts].flatMap(wordRuns)), ...lockedNames];
 
 const fieldNeedles = [
   "solution_suspect_id",
@@ -157,6 +192,9 @@ const fieldNeedles = [
   "keyClueIds",
   "keyEvidence",
   "SUPABASE_SERVICE_ROLE_KEY",
+  "locked_clues",
+  "clue_unlocks",
+  "source_clue_ids",
 ];
 
 const secretValues = [process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()].filter(Boolean);
@@ -181,7 +219,6 @@ if (clientFiles.length === 0) {
   process.exit(2);
 }
 
-const failures = [];
 for (const file of clientFiles) {
   const body = readFileSync(file, "utf8");
   const lower = body.toLowerCase();
@@ -190,6 +227,9 @@ for (const file of clientFiles) {
     if (body.includes(n)) failures.push(`${rel}: contains "${n.slice(0, 50)}"`);
   }
   for (const v of secretValues) if (body.includes(v)) failures.push(`${rel}: contains the service role key value`);
+  // Locked clue ids and image names may not appear at all, not even alongside the others.
+  for (const id of lockedIds) if (lower.includes(id)) failures.push(`${rel}: contains locked clue id ${id}`);
+  for (const image of lockedImages) if (body.includes(image)) failures.push(`${rel}: contains locked clue image ${image}`);
   // Public ids: each one may appear (players see every suspect and clue), but the answer
   // must not be singled out, so a file holding one of a case's suspect/clue ids must hold them all.
   for (const [caseId, groups] of cases) {
@@ -206,7 +246,7 @@ for (const file of clientFiles) {
   }
 }
 
-console.log(`Scanned ${clientFiles.length} client files for ${cases.size} case(s): ${textNeedles.length} result-text snippets, ${answerIdCount} answer ids, ${fieldNeedles.length} answer field names${secretValues.length ? ", the service key value" : ""}.`);
+console.log(`Scanned ${clientFiles.length} client files for ${cases.size} case(s): ${textNeedles.length} result-text and locked-clue snippets, ${answerIdCount} answer ids, ${lockedIds.size} locked clue ids, ${lockedImages.size} locked images, ${fieldNeedles.length} answer field names${secretValues.length ? ", the service key value" : ""}.`);
 if (failures.length) {
   console.error(`FAIL: ${failures.length} problem(s):\n` + failures.map((f) => `  - ${f}`).join("\n"));
   process.exit(1);

@@ -35,9 +35,14 @@ const results = [
   await probe("case_solutions table", "case_solutions?select=*"),
   await probe("cases.solution_suspect_id", "cases?select=solution_suspect_id&solution_suspect_id=not.is.null"),
   await probe("clues.is_red_herring", "clues?select=is_red_herring"),
+  await probe("locked_clues table", "locked_clues?select=*"),
+  await probe("clue_unlocks table", "clue_unlocks?select=*"),
 ];
 
 const missingTable = results[0].code === "PGRST205";
 if (missingTable) console.log("NOTE  case_solutions does not exist yet: Stage 1 (002) has not been applied.");
+if (results[3].code === "PGRST205" || results[4].code === "PGRST205") {
+  console.log("NOTE  locked_clues or clue_unlocks does not exist yet: 007_locked_clues.sql has not been applied.");
+}
 
 process.exit(results.some((r) => r.exposed) ? 1 : 0);
