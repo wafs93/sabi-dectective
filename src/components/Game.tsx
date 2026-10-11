@@ -202,7 +202,14 @@ export default function Game({ caseNumber }: { caseNumber: number }) {
         );
 
       case "result":
-        return <Result bundle={bundle} saved={screen.saved} onPlayAgain={playAgain} />;
+        return (
+          <Result
+            bundle={bundle}
+            saved={screen.saved}
+            portrait={art?.portraits[screen.saved.accusation.suspectId]}
+            onPlayAgain={playAgain}
+          />
+        );
     }
   }
 }

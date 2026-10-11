@@ -82,6 +82,22 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* Result reveal: each step fades up after its delay (about 1.5s in total). */
+@keyframes reveal-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes reveal-fade {
+  from { opacity: 0; transform: scale(1.04); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.reveal-portrait { animation: reveal-fade 600ms ease-out backwards; }
+.reveal-title { animation: reveal-up 450ms ease-out 450ms backwards; }
+.reveal-text { animation: reveal-up 450ms ease-out 850ms backwards; }
+.reveal-summary { animation: reveal-up 450ms ease-out 1050ms backwards; }
+
 .anim-drift { animation: scene-drift 40s ease-in-out infinite alternate; }
 .anim-flicker { animation: lamp-flicker 5s ease-in-out infinite; }
 .anim-breathe { animation: hotspot-breathe 2.8s ease-in-out infinite; }
