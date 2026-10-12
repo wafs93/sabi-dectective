@@ -151,7 +151,7 @@ export const case3Interrogations: Record<string, Interrogation> = {
       {
         id: "c3-sanni-role",
         text: "What exactly do you do for the campaign?",
-        defaultAnswer: "I record every naira that comes in and every naira that goes out. Accurately, on time, every time.",
+        defaultAnswer: "I record every naira that comes in and every naira that goes out, from start to finish, on my own computer. Accurately, on time, every time.",
       },
       {
         id: "c3-sanni-hack",
@@ -183,7 +183,7 @@ export const case3Interrogations: Record<string, Interrogation> = {
       {
         id: "c3-bisola-signing",
         text: "Who decides what the Foundation pays out?",
-        defaultAnswer: "I sign what my staff bring me. Paper after paper. I trust my people, Detective.",
+        defaultAnswer: "I sign what my staff bring me. Paper after paper, always paid out to some bureau de change. I trust my people, Detective.",
       },
       {
         id: "c3-bisola-system",
@@ -231,12 +231,12 @@ export const case3Interrogations: Record<string, Interrogation> = {
       {
         id: "c3-yinka-collect",
         text: "Who collected the dollars you changed at the end of July, August and September?",
-        defaultAnswer: "Kelvin's boys. Young boys, two or three of them, every time. Ask Kelvin, abeg. Ask him.",
+        defaultAnswer: "Kelvin's boys. Young boys, two or three of them, every time. Always the same shiny car, posters in the back window. Ask Kelvin, abeg.",
       },
       {
         id: "c3-yinka-records",
         text: "Do you keep a record of every exchange?",
-        defaultAnswer: "Every single one! Receipt book, stamp, everything. I am very organised. Too organised, my wife says.",
+        defaultAnswer: "Every single one! Receipt book, stamp, even the phone number of whoever booked it. I am very organised. Too organised, my wife says.",
         unlockedByClueId: V5,
         confrontText: "The pages for the end of July, August and September have been torn out of your receipt book.",
         confrontedAnswer:
@@ -313,7 +313,7 @@ export const case3Interrogations: Record<string, Interrogation> = {
       {
         id: "c3-aisha-safe",
         text: "Do you feel safe?",
-        defaultAnswer: "No. Next question.",
+        defaultAnswer: "No. Whoever got my flag closed knew about that raid before the police did. Next question.",
       },
       {
         id: "c3-aisha-kelvin",
