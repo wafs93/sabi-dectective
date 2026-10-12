@@ -149,15 +149,38 @@ describe("Case 99 fixture", () => {
     expect(text).not.toMatch(/Chuks|Kunle|Lagos|Ajah/);
   });
 
-  it("is never referred to by app code", () => {
+  it("is never imported by app code; only the flag-gated copy holds Case 99", () => {
     const walk = (dir: string): string[] =>
       readdirSync(dir).flatMap((f) => {
         const p = join(dir, f);
         return statSync(p).isDirectory() ? walk(p) : [p];
       });
+    const gate = 'process.env.NEXT_PUBLIC_ENABLE_TEST_CASE === "1"';
+    const importers: string[] = [];
     for (const file of walk(join(process.cwd(), "src"))) {
       const body = readFileSync(file, "utf8");
-      expect(body, file).not.toMatch(/tests\/|fixtures|case99|Test Locker|0000000099\d\d/);
+      const rel = file.slice(process.cwd().length + 1);
+      // Nothing in the app reaches into tests/.
+      expect(body, rel).not.toMatch(/tests\/|fixtures/);
+      if (rel.includes("/test-case/")) continue;
+      // Case 99's content, ids and the TEST ONLY card live only in test-case/ folders.
+      expect(body, rel).not.toMatch(/Test Locker|TEST ONLY|0000000099\d\d/);
+      if (body.includes("/test-case/")) {
+        importers.push(rel);
+        expect(body, rel).toContain(gate);
+      }
+      // Every use of it is behind the build-time flag.
+      for (const line of body.split("\n")) {
+        if (/case99(Fallback|Interrogations)/.test(line) && !line.startsWith("import ")) {
+          expect(line, rel).toContain(gate);
+        }
+      }
+    }
+    expect(importers.sort()).toEqual(["src/components/Home.tsx", "src/data/cases.ts", "src/data/interrogations.ts"]);
+    // The test-case data files have no runtime imports, so the build can drop them whole.
+    for (const f of readdirSync(join(process.cwd(), "src/data/test-case"))) {
+      const body = readFileSync(join(process.cwd(), "src/data/test-case", f), "utf8");
+      expect(body.match(/^import (?!type ).*$/gm), f).toBeNull();
     }
   });
 });

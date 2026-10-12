@@ -1,5 +1,6 @@
 import { CASE1_CLUES, CASE1_SUSPECTS } from "@/data/case1-ids";
 import { CASE2_CLUES, CASE2_SUSPECTS } from "@/data/case2-ids";
+import { case99Interrogations } from "@/data/test-case/case99";
 
 // Interrogation dialogue lives here until it moves into the database.
 // Keyed by suspect id; unlockedByClueId is a clue id.
@@ -164,3 +165,6 @@ export const interrogations: Record<string, Interrogation> = {
     ],
   },
 };
+
+// Test-only Case 99, for Vercel Preview builds with NEXT_PUBLIC_ENABLE_TEST_CASE=1.
+if (process.env.NEXT_PUBLIC_ENABLE_TEST_CASE === "1") Object.assign(interrogations, case99Interrogations);

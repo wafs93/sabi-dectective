@@ -1,5 +1,6 @@
 import Image from "next/image";
 import type { CaseArt } from "@/data/art";
+import { TEST_CASE_BADGE, TEST_CASE_ICON } from "@/data/test-case/labels";
 import type { CaseStatus } from "@/lib/record";
 import type { ResultTier } from "@/lib/types";
 
@@ -11,7 +12,14 @@ export type HomeCase = {
   playable: boolean;
   status: CaseStatus;
   hasSavedResult: boolean;
+  // A test-only case (Vercel Preview): shown last as a muted test card.
+  test?: true;
 };
+
+// The label for test-only cases' cards, set only with NEXT_PUBLIC_ENABLE_TEST_CASE=1 (Vercel
+// Preview). A plain check of the flag, so with it off the build drops the label's text entirely.
+let testLabel: { badge: string; icon: string } | null = null;
+if (process.env.NEXT_PUBLIC_ENABLE_TEST_CASE === "1") testLabel = { badge: TEST_CASE_BADGE, icon: TEST_CASE_ICON };
 
 const verdictLabel: Record<ResultTier, string> = {
   cracked: "Cracked",
@@ -44,8 +52,9 @@ export default function Home({
   usingLocalData: boolean;
   onOpenCase: (caseNumber: number) => void;
 }) {
-  const today = cases.find((c) => c.caseNumber === todayCaseNumber && c.playable);
-  const others = cases.filter((c) => c !== today);
+  const today = cases.find((c) => c.caseNumber === todayCaseNumber && c.playable && !c.test);
+  const others = cases.filter((c) => c !== today && !c.test);
+  const tests = cases.filter((c) => c.test && c.playable);
   const art = today?.art ?? null;
   const status = today?.status ?? "new";
   const action =
@@ -199,6 +208,21 @@ export default function Home({
             ),
           )}
         </ul>
+        {testLabel && tests.length > 0 && (
+          <ul className="flex flex-col gap-3">
+            {tests.map((c) => (
+              <li key={c.caseNumber}>
+                <TestCaseRow
+                  label={testLabel}
+                  caseNumber={c.caseNumber}
+                  title={c.title}
+                  statusLabel={statusStyle[c.status].label}
+                  onOpen={() => onOpenCase(c.caseNumber)}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
     </div>
   );
@@ -277,6 +301,47 @@ function OpenCaseRow({
         {title && <span className="block font-display text-lg leading-snug text-paper">{title}</span>}
       </span>
       <Chevron className="h-5 w-5 shrink-0 text-muted transition-colors group-hover:text-brass" />
+    </button>
+  );
+}
+
+// A muted card for a test-only case.
+function TestCaseRow({
+  label,
+  caseNumber,
+  title,
+  statusLabel,
+  onOpen,
+}: {
+  label: { badge: string; icon: string };
+  caseNumber: number;
+  title: string | null;
+  statusLabel: string;
+  onOpen: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="flex min-h-[4.5rem] w-full items-center gap-4 rounded-xl border border-dashed border-ink-600 p-2.5 pr-4 text-left text-muted transition-colors hover:border-brass-dim"
+    >
+      <span
+        aria-hidden
+        className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-ink-800/60 text-xl"
+      >
+        {label.icon}
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col gap-1">
+        <span className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full border border-danger/70 px-2 py-px text-xs font-semibold leading-5 text-danger">
+            {label.badge}
+          </span>
+          <span className="text-xs font-semibold uppercase tracking-[0.16em]">
+            Case {caseNumber} · {statusLabel}
+          </span>
+        </span>
+        {title && <span className="block font-display text-lg leading-snug text-paper/70">{title}</span>}
+      </span>
     </button>
   );
 }

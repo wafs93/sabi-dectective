@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -32,15 +32,34 @@ afterEach(() => {
   for (const d of dirs) rmSync(d, { recursive: true, force: true });
   dirs = [];
 });
-function checkBundle({ extraSql = "", browserFile = "console.log('hello');" } = {}) {
+// By default the test-only SQL (*_test.sql, Case 99) is left out, so these checks see only the
+// real cases; withTestSql keeps it. testCaseFlag runs the check as a Preview build would.
+function checkBundle({
+  extraSql = "",
+  browserFile = "console.log('hello');",
+  serverFile = "",
+  withTestSql = false,
+  testCaseFlag = false,
+} = {}) {
   const dir = mkdtempSync(join(tmpdir(), "sabi-check-"));
   dirs.push(dir);
   cpSync(join(repo, "supabase"), join(dir, "supabase"), { recursive: true });
-  if (extraSql) writeFileSync(join(dir, "supabase/migrations/900_test.sql"), extraSql);
+  if (!withTestSql) {
+    for (const f of readdirSync(join(dir, "supabase/migrations"))) {
+      if (f.endsWith("_test.sql")) rmSync(join(dir, "supabase/migrations", f));
+    }
+  }
+  if (extraSql) writeFileSync(join(dir, "supabase/migrations/900_extra.sql"), extraSql);
   mkdirSync(join(dir, ".next/static/chunks"), { recursive: true });
   writeFileSync(join(dir, ".next/static/chunks/app.js"), browserFile);
+  if (serverFile) {
+    mkdirSync(join(dir, ".next/server/chunks/ssr"), { recursive: true });
+    writeFileSync(join(dir, ".next/server/chunks/ssr/route.js"), serverFile);
+  }
   const env = { ...process.env };
   delete env.SUPABASE_SERVICE_ROLE_KEY;
+  if (testCaseFlag) env.NEXT_PUBLIC_ENABLE_TEST_CASE = "1";
+  else delete env.NEXT_PUBLIC_ENABLE_TEST_CASE;
   const r = spawnSync(process.execPath, [join(repo, "scripts/check-bundle.mjs")], { cwd: dir, env, encoding: "utf8" });
   return { code: r.status, out: r.stdout + r.stderr };
 }
@@ -159,5 +178,72 @@ values ('${LOCKED_ID}', '11111111-1111-4111-8111-000000000099', 'oops', null, 'o
     });
     expect(r.out).toContain("Could not read a locked_clues row");
     expect(r.code).toBe(2);
+  });
+});
+
+describe("scripts/check-bundle.mjs and the test-only Case 99", () => {
+  // Case 99's public story, as the flag-on build ships it.
+  const publicStory =
+    'var c={title:"Test Locker",briefing_text:"TEST ONLY. Fake briefing: a pretend locker was opened by a pretend person."};' +
+    'var s=["22222222-2222-4222-8222-000000009901","22222222-2222-4222-8222-000000009902"];' +
+    'var k=["33333333-3333-4333-8333-000000009901","33333333-3333-4333-8333-000000009902","33333333-3333-4333-8333-000000009903"];' +
+    'var n=["Test Suspect Alpha","Test Suspect Beta","Test red sock","Test blue sock","Test rubber duck"];';
+
+  it("flag off: passes with no test data in the build", () => {
+    const r = checkBundle({ withTestSql: true });
+    expect(r.out).toContain("Test case flag off");
+    expect(r.code).toBe(0);
+  });
+
+  it.each([
+    ["Test Locker", 'var a="Test Locker";'],
+    ["TEST ONLY", 'var a="TEST ONLY.";'],
+    ["a Case 99 suspect name", 'var a="Test Suspect Beta";'],
+    ["a Case 99 clue name", 'var a="Test rubber duck";'],
+    ["a Case 99 public id", 'var a="33333333-3333-4333-8333-000000009902";'],
+    ["the Case 99 case id", 'var a="11111111-1111-4111-8111-000000000099";'],
+    ["a Case 99 rule id", 'var a="44444444-4444-4444-8444-000000009901";'],
+  ])("flag off: fails when the browser build holds %s", (_label, leak) => {
+    const r = checkBundle({ withTestSql: true, browserFile: leak });
+    expect(r.out).toContain("NEXT_PUBLIC_ENABLE_TEST_CASE is off");
+    expect(r.code).toBe(1);
+  });
+
+  it("flag off: fails when only the server build holds it", () => {
+    const r = checkBundle({ withTestSql: true, serverFile: 'var a="Test Locker";' });
+    expect(r.out).toContain(".next/server/chunks/ssr/route.js: contains test-only");
+    expect(r.code).toBe(1);
+  });
+
+  it("flag on: the public story may appear, in the browser and on the server", () => {
+    const r = checkBundle({ withTestSql: true, testCaseFlag: true, browserFile: publicStory, serverFile: publicStory });
+    expect(r.out).toContain("Test case flag on");
+    expect(r.code).toBe(0);
+  });
+
+  it.each([
+    ["a locked clue name", 'var a="Test locked confession note";'],
+    ["a locked clue id", 'var a="33333333-3333-4333-8333-000000009905";'],
+    ["a locked clue description", 'var a="the two pretend socks make a pretend pair.";'],
+    ["the cracked answer text", 'var a="the pretend locker case is closed and the pretend culprit";'],
+    ["the missed answer text", 'var a="was the wrong pretend person for this pretend locker.";'],
+    ["a rule field name", 'var a="source_clue_ids";'],
+  ])("flag on: still fails when the browser build holds %s", (_label, leak) => {
+    const r = checkBundle({ withTestSql: true, testCaseFlag: true, browserFile: publicStory + leak });
+    expect(r.code).toBe(1);
+  });
+
+  it("flag on: still fails when only some Case 99 suspects appear (could single out the culprit)", () => {
+    const r = checkBundle({ withTestSql: true, testCaseFlag: true, browserFile: 'var a="22222222-2222-4222-8222-000000009901";' });
+    expect(r.out).toContain("only some suspect ids");
+    expect(r.code).toBe(1);
+  });
+
+  it("fails when a Case 99 locked clue is inserted into the public clues table", () => {
+    const leak = `insert into public.clues (id, case_id, name, icon_image_url, found_description)
+values ('33333333-3333-4333-8333-000000009904', '11111111-1111-4111-8111-000000000099', 'oops', null, 'oops');`;
+    const r = checkBundle({ withTestSql: true, extraSql: leak });
+    expect(r.out).toContain("inserts locked clue 33333333-3333-4333-8333-000000009904 into the public clues table");
+    expect(r.code).toBe(1);
   });
 });

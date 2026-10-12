@@ -2,8 +2,10 @@
 // Scans every client file: .next/static plus the prerendered HTML/RSC payloads.
 // Covers every case: the answers come from each case_solutions insert in supabase/migrations.
 // Locked clues (locked_clues / clue_unlocks inserts in supabase/) must not ship at all.
+// Test-only data (supabase/migrations/*_test.sql, e.g. Case 99) must not be in the build at all
+// unless it was built with NEXT_PUBLIC_ENABLE_TEST_CASE=1; even then only its public story may.
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 
 const root = process.cwd();
 const sqlIn = (dir) =>
@@ -200,6 +202,23 @@ const fieldNeedles = [
 
 const secretValues = [process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()].filter(Boolean);
 
+// ---- Test-only cases (Vercel Preview) ----
+// Their data is in supabase/migrations/*_test.sql. With the flag off, none of it may be anywhere
+// in .next, browser or server. With it on, its public offline copy may appear; the locked clue
+// and answer checks above still apply to it in full.
+const testCaseOn = process.env.NEXT_PUBLIC_ENABLE_TEST_CASE === "1";
+const testIds = new Set();
+const testText = new Set(["Test Locker", "TEST ONLY"]);
+for (const { file, sql } of migrations) {
+  if (!/_test\.sql$/.test(file)) continue;
+  for (const id of uuids(sql)) testIds.add(id);
+  for (const row of insertRows(sql, "cases")) testText.add(sqlString(row.title));
+  for (const table of ["suspects", "clues", "locked_clues"]) {
+    for (const row of insertRows(sql, table)) testText.add(sqlString(row.name));
+  }
+}
+testText.delete(null);
+
 function walk(dir, out = []) {
   if (!existsSync(dir)) return out;
   for (const name of readdirSync(dir)) {
@@ -235,7 +254,9 @@ for (const file of clientFiles) {
   // must not be singled out, so a file holding one of a case's suspect/clue ids must hold them all.
   for (const [caseId, groups] of cases) {
     for (const [label, set] of [["suspect", groups.suspects], ["clue", groups.clues]]) {
-      const ids = [...set];
+      // Locked clue ids (which may be key clues) are left out: they must never appear at all,
+      // which is checked above, while public ids must appear all together or not at all.
+      const ids = [...set].filter((id) => !lockedIds.has(id));
       const present = ids.filter((id) => lower.includes(id));
       if (present.length === 0) continue;
       if (ids.length < 2) {
@@ -245,6 +266,22 @@ for (const file of clientFiles) {
       }
     }
   }
+}
+
+if (!testCaseOn) {
+  const buildFiles = walk(join(root, ".next")).filter(
+    (p) => !p.includes(`${sep}cache${sep}`) && /\.(js|mjs|cjs|json|html|rsc|body|css|map|txt)$/.test(p),
+  );
+  for (const file of buildFiles) {
+    const body = readFileSync(file, "utf8");
+    const lower = body.toLowerCase();
+    const rel = file.slice(root.length + 1);
+    for (const t of testText) if (body.includes(t)) failures.push(`${rel}: contains test-only "${t}" (NEXT_PUBLIC_ENABLE_TEST_CASE is off)`);
+    for (const id of testIds) if (lower.includes(id)) failures.push(`${rel}: contains test-only id ${id} (NEXT_PUBLIC_ENABLE_TEST_CASE is off)`);
+  }
+  console.log(`Test case flag off: scanned ${buildFiles.length} build files (browser and server) for ${testText.size} test-only strings and ${testIds.size} test-only ids.`);
+} else {
+  console.log("Test case flag on: its public story may appear; locked clue and answer checks still apply.");
 }
 
 console.log(`Scanned ${clientFiles.length} client files for ${cases.size} case(s): ${textNeedles.length} result-text and locked-clue snippets, ${answerIdCount} answer ids, ${lockedIds.size} locked clue ids, ${lockedImages.size} locked images, ${fieldNeedles.length} answer field names${secretValues.length ? ", the service key value" : ""}.`);

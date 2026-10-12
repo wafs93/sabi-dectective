@@ -11,7 +11,7 @@ import Result from "@/components/Result";
 import SceneScreen from "@/components/SceneScreen";
 import Suspects from "@/components/Suspects";
 import { caseArt } from "@/data/art";
-import { hasLockedClues, hiddenClueKinds, listCases } from "@/data/cases";
+import { hasLockedClues, hiddenClueKinds, isTestCase, listCases } from "@/data/cases";
 import { requestCombineUnlock, requestConfrontUnlock } from "@/lib/api";
 import {
   clearProgress,
@@ -78,7 +78,8 @@ const navTabFor: Partial<Record<Screen["name"], NavTab>> = {
 };
 
 const cases = listCases();
-const playableCases = cases.filter((c) => c.playable).map((c) => c.caseNumber);
+// Real playable cases. Test cases (Preview only) never count for Today's case or the record.
+const playableCases = cases.filter((c) => c.playable && !c.test).map((c) => c.caseNumber);
 
 export default function Game() {
   // The case the player opened from Home. null until they pick one: the game
@@ -258,7 +259,8 @@ export default function Game() {
     if (activeCase === null) return;
     writeResult(activeCase, saved);
     setSavedResult(saved);
-    setRecord((prev) => {
+    // A test case's verdict never reaches the record, so rank and stats are unaffected.
+    if (!isTestCase(activeCase)) setRecord((prev) => {
       const next = recordVerdict(prev, activeCase, saved.result.outcome);
       writeRecord(next);
       return next;
@@ -292,7 +294,7 @@ export default function Game() {
 
   // What Home shows for each case. The open case uses what is on screen;
   // the others read their saved game.
-  const homeCase = ({ caseNumber: n, title, playable }: (typeof cases)[number]): HomeCase => {
+  const homeCase = ({ caseNumber: n, title, playable, test }: (typeof cases)[number]): HomeCase => {
     const active = n === activeCase;
     const saved = !playable ? null : active ? savedResult : readResult(n);
     const caseProgress = !playable ? emptyProgress : active ? progress : readProgress(n);
@@ -303,6 +305,7 @@ export default function Game() {
       playable,
       status: caseStatus({ caseNumber: n, savedResult: saved, progress: caseProgress, record }),
       hasSavedResult: saved !== null,
+      ...(test && { test }),
     };
   };
 
