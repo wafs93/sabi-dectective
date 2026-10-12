@@ -3,6 +3,8 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writ
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { case3Fallback } from "@/data/case3/case3";
+import { insertRows, sqlString, uuids, wordRuns } from "./helpers/sql";
 
 const repo = process.cwd();
 const migration = readFileSync(join(repo, "supabase/migrations/007_locked_clues.sql"), "utf8");
@@ -32,14 +34,17 @@ afterEach(() => {
   for (const d of dirs) rmSync(d, { recursive: true, force: true });
   dirs = [];
 });
-// By default the test-only SQL (*_test.sql, Case 99) is left out, so these checks see only the
-// real cases; withTestSql keeps it. testCaseFlag runs the check as a Preview build would.
+// By default the test-only SQL (*_test.sql, Case 99) and Case 3's SQL (010/011) are left out, so
+// these checks see only Cases 1 and 2; withTestSql and withCase3Sql keep them. testCaseFlag and
+// case3Flag run the check as a Preview build with that flag would.
 function checkBundle({
   extraSql = "",
   browserFile = "console.log('hello');",
   serverFile = "",
   withTestSql = false,
   testCaseFlag = false,
+  withCase3Sql = false,
+  case3Flag = false,
 } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "sabi-check-"));
   dirs.push(dir);
@@ -48,6 +53,9 @@ function checkBundle({
     for (const f of readdirSync(join(dir, "supabase/migrations"))) {
       if (f.endsWith("_test.sql")) rmSync(join(dir, "supabase/migrations", f));
     }
+  }
+  if (!withCase3Sql) {
+    for (const f of ["010_case3.sql", "011_case3_private.sql"]) rmSync(join(dir, "supabase/migrations", f), { force: true });
   }
   if (extraSql) writeFileSync(join(dir, "supabase/migrations/900_extra.sql"), extraSql);
   mkdirSync(join(dir, ".next/static/chunks"), { recursive: true });
@@ -60,6 +68,8 @@ function checkBundle({
   delete env.SUPABASE_SERVICE_ROLE_KEY;
   if (testCaseFlag) env.NEXT_PUBLIC_ENABLE_TEST_CASE = "1";
   else delete env.NEXT_PUBLIC_ENABLE_TEST_CASE;
+  if (case3Flag) env.NEXT_PUBLIC_ENABLE_CASE3 = "1";
+  else delete env.NEXT_PUBLIC_ENABLE_CASE3;
   const r = spawnSync(process.execPath, [join(repo, "scripts/check-bundle.mjs")], { cwd: dir, env, encoding: "utf8" });
   return { code: r.status, out: r.stdout + r.stderr };
 }
@@ -109,13 +119,13 @@ describe("scripts/check-public-access.mjs", () => {
 describe("scripts/check-bundle.mjs and locked clues", () => {
   it("passes with no locked clues in the SQL", () => {
     const r = checkBundle();
-    expect(r.out).toContain("0 locked clue ids");
+    expect(r.out).toContain(", 0 locked clue ids");
     expect(r.code).toBe(0);
   });
 
   it("passes with a locked clue in the SQL that doesn't ship", () => {
     const r = checkBundle({ extraSql: LOCKED_SQL });
-    expect(r.out).toContain("1 locked clue ids, 1 locked images");
+    expect(r.out).toContain(", 1 locked clue ids, 0 rule ids, 1 locked images");
     expect(r.code).toBe(0);
   });
 
@@ -141,7 +151,7 @@ describe("scripts/check-bundle.mjs and locked clues", () => {
       'var l={confront:{icon:"🗣️",label:"Revealed by questioning"},combine:{icon:"🔗",label:"Revealed by connecting clues"}};' +
       'var t="Hidden evidence ("+2+" left)";';
     const r = checkBundle({ extraSql: LOCKED_SQL, browserFile: summary });
-    expect(r.out).toContain("1 locked clue ids");
+    expect(r.out).toContain(", 1 locked clue ids");
     expect(r.code).toBe(0);
   });
 
@@ -191,7 +201,7 @@ describe("scripts/check-bundle.mjs and the test-only Case 99", () => {
 
   it("flag off: passes with no test data in the build", () => {
     const r = checkBundle({ withTestSql: true });
-    expect(r.out).toContain("Test case flag off");
+    expect(r.out).toContain("Test Case 99 flag off");
     expect(r.code).toBe(0);
   });
 
@@ -211,13 +221,13 @@ describe("scripts/check-bundle.mjs and the test-only Case 99", () => {
 
   it("flag off: fails when only the server build holds it", () => {
     const r = checkBundle({ withTestSql: true, serverFile: 'var a="Test Locker";' });
-    expect(r.out).toContain(".next/server/chunks/ssr/route.js: contains test-only");
+    expect(r.out).toContain(".next/server/chunks/ssr/route.js: contains Test Case 99");
     expect(r.code).toBe(1);
   });
 
   it("flag on: the public story may appear, in the browser and on the server", () => {
     const r = checkBundle({ withTestSql: true, testCaseFlag: true, browserFile: publicStory, serverFile: publicStory });
-    expect(r.out).toContain("Test case flag on");
+    expect(r.out).toContain("Test Case 99 flag on");
     expect(r.code).toBe(0);
   });
 
@@ -244,6 +254,71 @@ describe("scripts/check-bundle.mjs and the test-only Case 99", () => {
 values ('33333333-3333-4333-8333-000000009904', '11111111-1111-4111-8111-000000000099', 'oops', null, 'oops');`;
     const r = checkBundle({ withTestSql: true, extraSql: leak });
     expect(r.out).toContain("inserts locked clue 33333333-3333-4333-8333-000000009904 into the public clues table");
+    expect(r.code).toBe(1);
+  });
+});
+
+describe("scripts/check-bundle.mjs and Case 3 (behind NEXT_PUBLIC_ENABLE_CASE3)", () => {
+  const sql011 = readFileSync(join(repo, "supabase/migrations/011_case3_private.sql"), "utf8");
+  const hidden = insertRows(sql011, "locked_clues").map((r) => ({ id: uuids(r.id)[0], name: sqlString(r.name)!, desc: sqlString(r.found_description)! }));
+  const cracked = sqlString(insertRows(sql011, "case_solutions")[0].cracked_text)!;
+  // Case 3's public story, as a flag-on build ships it.
+  const publicStory = `var c=${JSON.stringify(case3Fallback)};`;
+
+  it("flag off: passes with nothing of Case 3 in the build", () => {
+    const r = checkBundle({ withCase3Sql: true });
+    expect(r.out).toContain("Case 3 flag off");
+    expect(r.code).toBe(0);
+  });
+
+  it.each([
+    ["a suspect name", 'var a="Aisha Lawal";'],
+    ["the case id", 'var a="11111111-1111-4111-8111-000000000003";'],
+    ["the title", 'var a="The Clean Money";'],
+    ["a visible clue id", 'var a="33333333-3333-4333-8333-000000000306";'],
+  ])("flag off: fails when the build holds %s", (_label, leak) => {
+    const r = checkBundle({ withCase3Sql: true, browserFile: leak });
+    expect(r.out).toContain("NEXT_PUBLIC_ENABLE_CASE3 is off");
+    expect(r.code).toBe(1);
+  });
+
+  it("flag off: fails when only the server build holds it", () => {
+    const r = checkBundle({ withCase3Sql: true, serverFile: 'var a="Oga Chidi Eze";' });
+    expect(r.out).toContain(".next/server/chunks/ssr/route.js: contains Case 3");
+    expect(r.code).toBe(1);
+  });
+
+  it("flag on: the public story may appear", () => {
+    const r = checkBundle({ withCase3Sql: true, case3Flag: true, browserFile: publicStory, serverFile: publicStory });
+    expect(r.out).toContain("Case 3 flag on");
+    expect(r.code).toBe(0);
+  });
+
+  it("flag on: still fails for a hidden clue's name, text or id, the answer, or a rule field", () => {
+    const k6 = hidden.find((h) => h.name === "Special Projects ledger")!;
+    const f4 = hidden.find((h) => h.name === "Signed Special Projects order")!;
+    for (const leak of [
+      `var a="${k6.name}";`,
+      `var a="${wordRuns(f4.desc)[2]}";`,
+      `var a="${hidden[11].id}";`,
+      `var a="${wordRuns(cracked)[5]}";`,
+      'var a="source_clue_ids";',
+    ]) {
+      const r = checkBundle({ withCase3Sql: true, case3Flag: true, browserFile: publicStory + leak });
+      expect(r.code, leak).toBe(1);
+    }
+  });
+
+  it("flag on: still fails for an unlock rule's id", () => {
+    const ruleId = uuids(insertRows(sql011, "clue_unlocks")[5].id)[0];
+    const r = checkBundle({ withCase3Sql: true, case3Flag: true, browserFile: publicStory + `var a="${ruleId}";` });
+    expect(r.out).toContain(`contains unlock rule id ${ruleId}`);
+    expect(r.code).toBe(1);
+  });
+
+  it("flag on: still fails when only some Case 3 suspect ids appear", () => {
+    const r = checkBundle({ withCase3Sql: true, case3Flag: true, browserFile: 'var a="22222222-2222-4222-8222-000000000302";' });
+    expect(r.out).toContain("only some suspect ids");
     expect(r.code).toBe(1);
   });
 });

@@ -2,8 +2,8 @@
 // Scans every client file: .next/static plus the prerendered HTML/RSC payloads.
 // Covers every case: the answers come from each case_solutions insert in supabase/migrations.
 // Locked clues (locked_clues / clue_unlocks inserts in supabase/) must not ship at all.
-// Test-only data (supabase/migrations/*_test.sql, e.g. Case 99) must not be in the build at all
-// unless it was built with NEXT_PUBLIC_ENABLE_TEST_CASE=1; even then only its public story may.
+// Flag-gated data (test Case 99, and Case 3 while in testing) must not be in the build at all
+// unless it was built with that flag; even then only its public story may.
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, sep } from "node:path";
 
@@ -138,6 +138,8 @@ for (const { sql } of allSql) {
 // ---- Locked clues: hidden until the player unlocks them, so nothing about them may ship ----
 
 const lockedIds = new Set();
+// Ids of the unlock rules themselves: never needed by the browser, so never allowed there.
+const ruleIds = new Set();
 const lockedTexts = new Set();
 // Names of two words or more are checked as exact phrases; one word is too common to tell apart.
 const lockedNames = new Set();
@@ -160,6 +162,7 @@ for (const { file, sql } of allSql) {
   }
   for (const row of insertRows(sql, "clue_unlocks")) {
     for (const id of uuids(row.unlocks_clue_id)) lockedIds.add(id);
+    for (const id of uuids(row.id)) ruleIds.add(id);
   }
 }
 
@@ -202,22 +205,28 @@ const fieldNeedles = [
 
 const secretValues = [process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()].filter(Boolean);
 
-// ---- Test-only cases (Vercel Preview) ----
-// Their data is in supabase/migrations/*_test.sql. With the flag off, none of it may be anywhere
-// in .next, browser or server. With it on, its public offline copy may appear; the locked clue
-// and answer checks above still apply to it in full.
-const testCaseOn = process.env.NEXT_PUBLIC_ENABLE_TEST_CASE === "1";
-const testIds = new Set();
-const testText = new Set(["Test Locker", "TEST ONLY"]);
-for (const { file, sql } of migrations) {
-  if (!/_test\.sql$/.test(file)) continue;
-  for (const id of uuids(sql)) testIds.add(id);
-  for (const row of insertRows(sql, "cases")) testText.add(sqlString(row.title));
-  for (const table of ["suspects", "clues", "locked_clues"]) {
-    for (const row of insertRows(sql, table)) testText.add(sqlString(row.name));
+// ---- Cases built in only behind a build-time flag (Vercel Preview) ----
+// Test Case 99 (supabase/migrations/*_test.sql) and Case 3 while it is in testing (010/011).
+// With a dataset's flag off, none of its names, titles or ids may be anywhere in .next, browser
+// or server. With it on, its public story may appear; the locked clue and answer checks above
+// still apply to it in full. REMOVE the Case 3 entry when Case 3 launches.
+const gatedData = [
+  { label: "Test Case 99", flag: "NEXT_PUBLIC_ENABLE_TEST_CASE", files: /_test\.sql$/, literals: ["Test Locker", "TEST ONLY"] },
+  { label: "Case 3", flag: "NEXT_PUBLIC_ENABLE_CASE3", files: /(^|\/)01[01]_case3[^/]*\.sql$/, literals: [] },
+].map((g) => {
+  const ids = new Set();
+  const text = new Set(g.literals);
+  for (const { file, sql } of migrations) {
+    if (!g.files.test(file)) continue;
+    for (const id of uuids(sql)) ids.add(id);
+    for (const row of insertRows(sql, "cases")) text.add(sqlString(row.title));
+    for (const table of ["suspects", "clues", "locked_clues"]) {
+      for (const row of insertRows(sql, table)) text.add(sqlString(row.name));
+    }
   }
-}
-testText.delete(null);
+  text.delete(null);
+  return { ...g, on: process.env[g.flag] === "1", ids, text };
+});
 
 function walk(dir, out = []) {
   if (!existsSync(dir)) return out;
@@ -249,6 +258,7 @@ for (const file of clientFiles) {
   for (const v of secretValues) if (body.includes(v)) failures.push(`${rel}: contains the service role key value`);
   // Locked clue ids and image names may not appear at all, not even alongside the others.
   for (const id of lockedIds) if (lower.includes(id)) failures.push(`${rel}: contains locked clue id ${id}`);
+  for (const id of ruleIds) if (lower.includes(id)) failures.push(`${rel}: contains unlock rule id ${id}`);
   for (const image of lockedImages) if (body.includes(image)) failures.push(`${rel}: contains locked clue image ${image}`);
   // Public ids: each one may appear (players see every suspect and clue), but the answer
   // must not be singled out, so a file holding one of a case's suspect/clue ids must hold them all.
@@ -268,7 +278,8 @@ for (const file of clientFiles) {
   }
 }
 
-if (!testCaseOn) {
+const gatedOff = gatedData.filter((g) => !g.on && (g.ids.size > 0 || g.text.size > 0));
+if (gatedOff.length > 0) {
   const buildFiles = walk(join(root, ".next")).filter(
     (p) => !p.includes(`${sep}cache${sep}`) && /\.(js|mjs|cjs|json|html|rsc|body|css|map|txt)$/.test(p),
   );
@@ -276,15 +287,20 @@ if (!testCaseOn) {
     const body = readFileSync(file, "utf8");
     const lower = body.toLowerCase();
     const rel = file.slice(root.length + 1);
-    for (const t of testText) if (body.includes(t)) failures.push(`${rel}: contains test-only "${t}" (NEXT_PUBLIC_ENABLE_TEST_CASE is off)`);
-    for (const id of testIds) if (lower.includes(id)) failures.push(`${rel}: contains test-only id ${id} (NEXT_PUBLIC_ENABLE_TEST_CASE is off)`);
+    for (const g of gatedOff) {
+      for (const t of g.text) if (body.includes(t)) failures.push(`${rel}: contains ${g.label} "${t}" (${g.flag} is off)`);
+      for (const id of g.ids) if (lower.includes(id)) failures.push(`${rel}: contains ${g.label} id ${id} (${g.flag} is off)`);
+    }
   }
-  console.log(`Test case flag off: scanned ${buildFiles.length} build files (browser and server) for ${testText.size} test-only strings and ${testIds.size} test-only ids.`);
-} else {
-  console.log("Test case flag on: its public story may appear; locked clue and answer checks still apply.");
+  for (const g of gatedOff) {
+    console.log(`${g.label} flag off: scanned ${buildFiles.length} build files (browser and server) for ${g.text.size} strings and ${g.ids.size} ids.`);
+  }
+}
+for (const g of gatedData.filter((g) => g.on)) {
+  console.log(`${g.label} flag on: its public story may appear; locked clue and answer checks still apply.`);
 }
 
-console.log(`Scanned ${clientFiles.length} client files for ${cases.size} case(s): ${textNeedles.length} result-text and locked-clue snippets, ${answerIdCount} answer ids, ${lockedIds.size} locked clue ids, ${lockedImages.size} locked images, ${fieldNeedles.length} answer field names${secretValues.length ? ", the service key value" : ""}.`);
+console.log(`Scanned ${clientFiles.length} client files for ${cases.size} case(s): ${textNeedles.length} result-text and locked-clue snippets, ${answerIdCount} answer ids, ${lockedIds.size} locked clue ids, ${ruleIds.size} rule ids, ${lockedImages.size} locked images, ${fieldNeedles.length} answer field names${secretValues.length ? ", the service key value" : ""}.`);
 if (failures.length) {
   console.error(`FAIL: ${failures.length} problem(s):\n` + failures.map((f) => `  - ${f}`).join("\n"));
   process.exit(1);

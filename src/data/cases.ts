@@ -1,5 +1,6 @@
 import { case1Fallback } from "@/data/case1-fallback";
 import { case2Fallback } from "@/data/case2-fallback";
+import { case3Fallback } from "@/data/case3/case3";
 import { case99Fallback } from "@/data/test-case/case99";
 import type { CaseBundle } from "@/lib/types";
 
@@ -24,6 +25,10 @@ const fallbackByCaseNumber: Record<number, CaseBundle> = {
   2: case2Fallback,
 };
 if (process.env.NEXT_PUBLIC_ENABLE_TEST_CASE === "1") fallbackByCaseNumber[99] = case99Fallback;
+// TEMPORARY GATE: Case 3 is playable only in builds with NEXT_PUBLIC_ENABLE_CASE3=1 (Vercel
+// Preview). With the flag off it stays the locked "Coming soon" card and none of its data is in
+// the build. REMOVE THIS GATE (here, below, and in next.config.ts) WHEN CASE 3 LAUNCHES.
+if (process.env.NEXT_PUBLIC_ENABLE_CASE3 === "1") fallbackByCaseNumber[3] = case3Fallback;
 
 export function caseFallback(caseNumber: number): CaseBundle | null {
   return fallbackByCaseNumber[caseNumber] ?? null;
@@ -43,6 +48,13 @@ const lockedCluesByCaseNumber: Record<number, false | { hidden: readonly HiddenC
 // Case 99 hides one clue revealed by questioning and one by connecting clues.
 if (process.env.NEXT_PUBLIC_ENABLE_TEST_CASE === "1") {
   lockedCluesByCaseNumber[99] = { hidden: ["confront", "combine"] };
+}
+// Case 3 hides 20 clues: 8 revealed by questioning, 12 by connecting clues.
+// TEMPORARY GATE: remove with the one above when Case 3 launches.
+if (process.env.NEXT_PUBLIC_ENABLE_CASE3 === "1") {
+  lockedCluesByCaseNumber[3] = {
+    hidden: [...Array<HiddenClueKind>(8).fill("confront"), ...Array<HiddenClueKind>(12).fill("combine")],
+  };
 }
 
 export function hasLockedClues(caseNumber: number): boolean {
