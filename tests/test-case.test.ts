@@ -44,7 +44,7 @@ describe("the build-time flag", () => {
     expect(m.listCases()).toEqual([
       { caseNumber: 1, title: "The Empty Stall", playable: true },
       { caseNumber: 2, title: "The Second Buyer", playable: true },
-      { caseNumber: 3, title: null, playable: false },
+      { caseNumber: 3, title: "The Clean Money", playable: true },
       { caseNumber: 99, title: "Test Locker", playable: true, test: true },
     ]);
     expect(m.isTestCase(99)).toBe(true);
@@ -66,10 +66,12 @@ describe("the build-time flag", () => {
   it("on: Case 99 never becomes Today's case", async () => {
     const m = await withFlag(true);
     const real = m.listCases().filter((c) => c.playable && !c.test).map((c) => c.caseNumber);
-    expect(real).toEqual([1, 2]);
+    expect(real).toEqual([1, 2, 3]);
     const both = recordVerdict(recordVerdict(emptyRecord, 1, "cracked"), 2, "close");
+    const all = recordVerdict(both, 3, "missed");
     expect(todaysCase(real, emptyRecord)).toBe(1);
-    expect(todaysCase(real, both)).toBe(2);
+    expect(todaysCase(real, both)).toBe(3);
+    expect(todaysCase(real, all)).toBe(3);
   });
 });
 

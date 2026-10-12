@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { CASE3_CLUES, CASE3_ID, CASE3_SUSPECTS, case3Fallback } from "@/data/case3/case3";
 import { insertRows, sqlString, uuids, wordRuns } from "./helpers/sql";
 
@@ -230,27 +230,10 @@ describe("Case 3 facts stay consistent", () => {
   });
 });
 
-describe("the Case 3 build-time flag", () => {
-  async function withFlag(on: boolean) {
-    vi.resetModules();
-    vi.stubEnv("NEXT_PUBLIC_ENABLE_CASE3", on ? "1" : "");
-    return import("@/data/cases");
-  }
-  afterEach(() => {
-    vi.unstubAllEnvs();
-    vi.resetModules();
-  });
-
-  it("off: Case 3 stays the locked Coming soon card, with no data", async () => {
-    const m = await withFlag(false);
-    expect(m.listCases().find((c) => c.caseNumber === 3)).toEqual({ caseNumber: 3, title: null, playable: false });
-    expect(m.caseFallback(3)).toBeNull();
-    expect(m.hasLockedClues(3)).toBe(false);
-    expect(m.hiddenClueKinds(3)).toEqual([]);
-  });
-
-  it("on: Case 3 is playable with its public slot summary (8 by questioning, 12 by connecting)", async () => {
-    const m = await withFlag(true);
+describe("Case 3 is launched", () => {
+  it("is always playable, after Cases 1 and 2, with its public slot summary (8 by questioning, 12 by connecting)", async () => {
+    const m = await import("@/data/cases");
+    expect(m.listCases().map((c) => c.caseNumber).slice(0, 3)).toEqual([1, 2, 3]);
     expect(m.listCases().find((c) => c.caseNumber === 3)).toEqual({ caseNumber: 3, title: "The Clean Money", playable: true });
     expect(m.caseFallback(3)).toEqual(case3Fallback);
     expect(m.hasLockedClues(3)).toBe(true);
@@ -260,5 +243,11 @@ describe("the Case 3 build-time flag", () => {
     expect(kinds).toHaveLength(hidden.length);
     // Case 1 and Case 2 are untouched.
     expect(m.hasLockedClues(1) || m.hasLockedClues(2)).toBe(false);
+  });
+
+  it("has no Case 3 flag left anywhere in the app or build config", () => {
+    for (const f of ["src/data/cases.ts", "src/data/art.ts", "src/data/interrogations.ts", "next.config.ts", "scripts/check-bundle.mjs"]) {
+      expect(readFileSync(join(process.cwd(), f), "utf8"), f).not.toContain("ENABLE_CASE3");
+    }
   });
 });

@@ -3,8 +3,7 @@ import type { CaseBundle } from "@/lib/types";
 // Case 3 "The Clean Money": the public story only (case, 8 suspects, 8 visible clues).
 // Mirrors supabase/migrations/010_case3.sql. No answer, and nothing about the 20 hidden clues:
 // their names, text, ids and rules live only in the private tables (011).
-// Registered only in builds with NEXT_PUBLIC_ENABLE_CASE3=1 (see src/data/cases.ts). With the flag
-// off nothing imports what this exports, and the build drops it. No runtime imports, on purpose.
+// Registered in src/data/cases.ts.
 
 export const CASE3_ID = "11111111-1111-4111-8111-000000000003";
 

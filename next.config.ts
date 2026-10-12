@@ -7,8 +7,6 @@ const nextConfig: NextConfig = {
     // code completely when the flag is off. An unset NEXT_PUBLIC_ variable would instead
     // be left as a runtime lookup, and the code it guards would ship.
     NEXT_PUBLIC_ENABLE_TEST_CASE: process.env.NEXT_PUBLIC_ENABLE_TEST_CASE === "1" ? "1" : "",
-    // Same for Case 3 while it is in testing. Remove this line when Case 3 launches.
-    NEXT_PUBLIC_ENABLE_CASE3: process.env.NEXT_PUBLIC_ENABLE_CASE3 === "1" ? "1" : "",
   },
 };
 

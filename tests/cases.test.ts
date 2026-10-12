@@ -22,18 +22,18 @@ describe("case lookup by number", () => {
   });
 
   it("returns null for cases that aren't in the code", () => {
-    for (const n of [0, 3, 99, Number.NaN]) {
+    for (const n of [0, 4, 99, Number.NaN]) {
       expect(caseFallback(n)).toBeNull();
       expect(caseArt(n)).toBeNull();
     }
   });
 
-  it("lists Cases 1 to 3 in order, with Cases 1 and 2 playable and Case 3 locked", () => {
+  it("lists Cases 1 to 3 in order, all playable", () => {
     expect(CASE_NUMBERS).toEqual([1, 2, 3]);
     expect(listCases()).toEqual([
       { caseNumber: 1, title: "The Empty Stall", playable: true },
       { caseNumber: 2, title: "The Second Buyer", playable: true },
-      { caseNumber: 3, title: null, playable: false },
+      { caseNumber: 3, title: "The Clean Money", playable: true },
     ]);
   });
 

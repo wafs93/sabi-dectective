@@ -2,8 +2,8 @@
 // Scans every client file: .next/static plus the prerendered HTML/RSC payloads.
 // Covers every case: the answers come from each case_solutions insert in supabase/migrations.
 // Locked clues (locked_clues / clue_unlocks inserts in supabase/) must not ship at all.
-// Flag-gated data (test Case 99, and Case 3 while in testing) must not be in the build at all
-// unless it was built with that flag; even then only its public story may.
+// Flag-gated data (test Case 99) must not be in the build at all unless it was built with that
+// flag; even then only its public story may. Every other case's public story may ship.
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, sep } from "node:path";
 
@@ -119,6 +119,10 @@ for (const { sql } of migrations) {
     for (const id of clues) ids.clues.add(id);
     answerIdCount += suspects.length + clues.length;
   }
+  // A later migration may reword a result text (e.g. 013_case3_sanni_missed.sql): banned too.
+  for (const m of stripComments(sql).matchAll(/update\s+(?:public\.)?case_solutions\s+set\s+\w+_text\s*=\s*'((?:[^']|'')*)'/gi)) {
+    resultTexts.add(m[1].replaceAll("''", "'"));
+  }
 }
 if (resultTexts.size === 0 || answerIdCount === 0) {
   console.error("Found no answer texts or answer ids in supabase/migrations. Update this script.");
@@ -207,21 +211,11 @@ const fieldNeedles = [
 const secretValues = [process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()].filter(Boolean);
 
 // ---- Cases built in only behind a build-time flag (Vercel Preview) ----
-// Test Case 99 (supabase/migrations/*_test.sql) and Case 3 while it is in testing (010/011).
-// With a dataset's flag off, none of its names, titles or ids may be anywhere in .next, browser
-// or server. With it on, its public story may appear; the locked clue and answer checks above
-// still apply to it in full. REMOVE the Case 3 entry when Case 3 launches.
+// Test Case 99 (supabase/migrations/*_test.sql). With its flag off, none of its names, titles or
+// ids may be anywhere in .next, browser or server. With it on, its public story may appear; the
+// locked clue and answer checks above still apply to it in full.
 const gatedData = [
   { label: "Test Case 99", flag: "NEXT_PUBLIC_ENABLE_TEST_CASE", files: /_test\.sql$/, literals: ["Test Locker", "TEST ONLY"], sources: [] },
-  {
-    label: "Case 3",
-    flag: "NEXT_PUBLIC_ENABLE_CASE3",
-    files: /(^|\/)01[01]_case3[^/]*\.sql$/,
-    literals: [],
-    // Its offline copy, dialogue and art: every line of text in them, and the name of every
-    // picture the art imports, is banned with the flag off.
-    sources: ["src/data/case3/case3.ts", "src/data/case3/dialogue.ts", "src/data/case3/art.ts"],
-  },
 ].map((g) => {
   const ids = new Set();
   const text = new Set(g.literals);

@@ -18,7 +18,7 @@ import portraitYinka from "../../../public/art/portrait-yinka.jpg";
 import sceneLekkiDuplex from "../../../public/art/scene-lekki-duplex.jpg";
 
 // Case 3 art: the scene, 8 portraits and the 8 visible clues. Types and the lookup by case
-// number live in art.ts, which registers this only in builds with NEXT_PUBLIC_ENABLE_CASE3=1.
+// number live in art.ts, which registers this.
 // The 4 final-proof pictures are not here: they reach the browser only through an unlock reply.
 // Ids are written out (not imported from case3.ts) so this file stays self-contained.
 

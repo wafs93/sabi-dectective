@@ -37,8 +37,9 @@ const ask = (fetchImpl: typeof fetch, suspectId: string, clueId: string, held: s
   requestConfrontUnlock(CASE99_ID, suspectId, clueId, held, { fetchImpl });
 
 describe("the per-case switch", () => {
-  it("is off for every real case, and for anything unknown", () => {
-    for (const n of [...CASE_NUMBERS, 0, 99, Number.NaN]) expect(hasLockedClues(n)).toBe(false);
+  it("is off for Cases 1 and 2, and for anything unknown (Case 3 has its own test)", () => {
+    for (const n of [...CASE_NUMBERS.filter((n) => n !== 3), 0, 99, Number.NaN]) expect(hasLockedClues(n)).toBe(false);
+    expect(hasLockedClues(3)).toBe(true);
   });
 });
 

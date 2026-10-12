@@ -55,8 +55,8 @@ function combinerWith(fetchImpl: typeof fetch, { enabled = true, held = [] as st
 }
 
 describe("the public summary and switch", () => {
-  it("is off, with no hidden clues, for every real case", () => {
-    for (const n of [...CASE_NUMBERS, 99]) {
+  it("is off, with no hidden clues, for Cases 1 and 2 and the test case (Case 3 has its own test)", () => {
+    for (const n of [...CASE_NUMBERS.filter((n) => n !== 3), 99]) {
       expect(hasLockedClues(n)).toBe(false);
       expect(hiddenClueKinds(n)).toEqual([]);
     }

@@ -2,8 +2,9 @@ import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { CASE3_CLUES, CASE3_ID, CASE3_SUSPECTS, case3Fallback } from "@/data/case3/case3";
+import { caseArt } from "@/data/art";
 import { case3Art } from "@/data/case3/art";
 import { insertRows, sqlString, uuids } from "./helpers/sql";
 
@@ -126,19 +127,8 @@ describe("Case 3 art map", () => {
     expect(case3Art.intro).not.toMatch(/Madu|Ifeanyi|Honourable|Hon\.|politician|campaign|Special Projects/i);
   });
 
-  it("is in the art lookup only with the Case 3 flag on", async () => {
-    vi.resetModules();
-    vi.stubEnv("NEXT_PUBLIC_ENABLE_CASE3", "");
-    expect((await import("@/data/art")).caseArt(3)).toBeNull();
-    vi.resetModules();
-    vi.stubEnv("NEXT_PUBLIC_ENABLE_CASE3", "1");
-    const on = await import("@/data/art");
-    expect(on.caseArt(3)?.portraits).toEqual(case3Art.portraits);
-    vi.unstubAllEnvs();
-    vi.resetModules();
-    expect(readFileSync(join(repo, "src/data/art.ts"), "utf8")).toContain(
-      'if (process.env.NEXT_PUBLIC_ENABLE_CASE3 === "1") artByCaseNumber[3] = case3Art;',
-    );
+  it("is in the art lookup, with no flag", () => {
+    expect(caseArt(3)).toBe(case3Art);
   });
 });
 
@@ -195,7 +185,7 @@ describe("the bundle check and Case 3 art", () => {
     dirs = [];
   });
   // Runs the bundle check on a tiny fake build: the real supabase/ and src/data/case3/.
-  function checkBundle(browserFile: string, case3Flag: boolean, serverFile?: string) {
+  function checkBundle(browserFile: string, serverFile?: string) {
     const dir = mkdtempSync(join(tmpdir(), "sabi-c3art-"));
     dirs.push(dir);
     cpSync(join(repo, "supabase"), join(dir, "supabase"), { recursive: true });
@@ -208,7 +198,7 @@ describe("the bundle check and Case 3 art", () => {
       mkdirSync(join(dir, ".next/server/chunks"), { recursive: true });
       writeFileSync(join(dir, ".next/server/chunks/page.js.map"), serverFile);
     }
-    const env: NodeJS.ProcessEnv = { ...process.env, NEXT_PUBLIC_ENABLE_CASE3: case3Flag ? "1" : "" };
+    const env: NodeJS.ProcessEnv = { ...process.env };
     delete env.SUPABASE_SERVICE_ROLE_KEY;
     delete env.NEXT_PUBLIC_ENABLE_TEST_CASE;
     const r = spawnSync(process.execPath, [join(repo, "scripts/check-bundle.mjs")], { cwd: dir, env, encoding: "utf8" });
@@ -217,30 +207,26 @@ describe("the bundle check and Case 3 art", () => {
   const lockedName = updates[1].image.split("/").pop()!.replace(/\.jpg$/, "");
 
   it("reads the 4 locked picture names from 012", () => {
-    const r = checkBundle("var a=1;", true);
+    const r = checkBundle("var a=1;");
     expect(r.out).toContain(", 4 locked images,");
     expect(r.code).toBe(0);
   });
 
-  it("flag on: fails when a locked picture name is in a browser file, with or without its path", () => {
+  it("fails when a locked picture name is in a browser file, with or without its path", () => {
     for (const planted of [`"/art/locked/${lockedName}.jpg"`, `"${lockedName}"`]) {
-      const r = checkBundle(`var a=${planted};`, true);
+      const r = checkBundle(`var a=${planted};`);
       expect(r.out).toContain(`contains locked clue image ${lockedName}`);
       expect(r.code).toBe(1);
     }
   });
 
-  it("flag on: the public Case 3 pictures may ship", () => {
-    const r = checkBundle('var s="/_next/static/media/portrait-kelvin.0a1b2c.jpg";var c="/_next/static/media/clue-raid-report.0a1b2c.jpg";', true);
+  it("the public Case 3 pictures may ship", () => {
+    const r = checkBundle('var s="/_next/static/media/portrait-kelvin.0a1b2c.jpg";var c="/_next/static/media/clue-raid-report.0a1b2c.jpg";');
     expect(r.code).toBe(0);
   });
 
-  it("flag off: fails when a Case 3 picture is anywhere in the build, server source maps too", () => {
-    const r = checkBundle("var a=1;", false, '{"sources":["../public/art/scene-lekki-duplex.jpg"]}');
-    expect(r.out).toContain('.next/server/chunks/page.js.map: contains Case 3 "scene-lekki-duplex"');
-    expect(r.code).toBe(1);
-    const browser = checkBundle('var p="/_next/static/media/portrait-bisola.0a1b2c.jpg";', false);
-    expect(browser.out).toContain('contains Case 3 "portrait-bisola"');
-    expect(browser.code).toBe(1);
+  it("a public Case 3 picture in a server file is fine", () => {
+    const r = checkBundle("var a=1;", '{"sources":["../public/art/scene-lekki-duplex.jpg"]}');
+    expect(r.code).toBe(0);
   });
 });

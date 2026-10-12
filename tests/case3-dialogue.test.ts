@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { CASE3_CLUES, CASE3_SUSPECTS, case3Fallback } from "@/data/case3/case3";
 import { case3Interrogations } from "@/data/case3/dialogue";
 import { insertRows, sqlString, uuids, wordRuns } from "./helpers/sql";
@@ -67,11 +67,7 @@ describe("Case 3 dialogue: structure", () => {
   });
 
   it("uses question ids that are unique across every case", async () => {
-    vi.resetModules();
-    vi.stubEnv("NEXT_PUBLIC_ENABLE_CASE3", "1");
     const { interrogations } = await import("@/data/interrogations");
-    vi.unstubAllEnvs();
-    vi.resetModules();
     const ids = Object.values(interrogations).flatMap((s) => s.questions.map((q) => q.id));
     expect(new Set(ids).size).toBe(ids.length);
     expect(interrogations[suspectIds[0]]).toEqual(case3Interrogations[suspectIds[0]]);
@@ -141,12 +137,11 @@ describe("Case 3 dialogue: gives nothing away", () => {
     expect(dialogueLower).not.toMatch(/(in|under) (hon\.? )?madu'?s name/);
   });
 
-  it("has no runtime imports, so a flag-off build can drop it", () => {
-    const src = readFileSync(join(repo, "src/data/case3/dialogue.ts"), "utf8");
-    expect(src.match(/^import (?!type ).*$/gm)).toBeNull();
+  it("is registered with the other cases' dialogue, with no flag", () => {
     expect(readFileSync(join(repo, "src/data/interrogations.ts"), "utf8")).toContain(
-      'if (process.env.NEXT_PUBLIC_ENABLE_CASE3 === "1") Object.assign(interrogations, case3Interrogations);',
+      "Object.assign(interrogations, case3Interrogations);",
     );
+    expect(readFileSync(join(repo, "src/data/interrogations.ts"), "utf8")).not.toContain("ENABLE_CASE3");
   });
 });
 
@@ -157,7 +152,7 @@ describe("the bundle check and Case 3 dialogue", () => {
     dirs = [];
   });
   // Runs the bundle check on a tiny fake build: the real supabase/ and src/data/case3/.
-  function checkBundle(browserFile: string, case3Flag: boolean) {
+  function checkBundle(browserFile: string) {
     const dir = mkdtempSync(join(tmpdir(), "sabi-c3-"));
     dirs.push(dir);
     cpSync(join(repo, "supabase"), join(dir, "supabase"), { recursive: true });
@@ -166,30 +161,23 @@ describe("the bundle check and Case 3 dialogue", () => {
     cpSync(join(repo, "src/data/case3"), join(dir, "src/data/case3"), { recursive: true });
     mkdirSync(join(dir, ".next/static/chunks"), { recursive: true });
     writeFileSync(join(dir, ".next/static/chunks/app.js"), browserFile);
-    const env: NodeJS.ProcessEnv = { ...process.env, NEXT_PUBLIC_ENABLE_CASE3: case3Flag ? "1" : "" };
+    const env: NodeJS.ProcessEnv = { ...process.env };
     delete env.SUPABASE_SERVICE_ROLE_KEY;
     delete env.NEXT_PUBLIC_ENABLE_TEST_CASE;
     const r = spawnSync(process.execPath, [join(repo, "scripts/check-bundle.mjs")], { cwd: dir, env, encoding: "utf8" });
     return { code: r.status, out: r.stdout + r.stderr };
   }
 
-  it("flag off: fails when a line of Case 3 dialogue is in the build", () => {
-    const line = case3Interrogations[suspectIds[5]].questions[0].defaultAnswer;
-    const r = checkBundle(`var a=${JSON.stringify(line)};`, false);
-    expect(r.out).toContain(`contains Case 3 "${line}"`);
-    expect(r.code).toBe(1);
-  });
-
-  it("flag on: the dialogue may ship", () => {
-    const r = checkBundle(`var p=${JSON.stringify(case3Fallback)};var d=${JSON.stringify(case3Interrogations)};`, true);
+  it("the dialogue may ship", () => {
+    const r = checkBundle(`var p=${JSON.stringify(case3Fallback)};var d=${JSON.stringify(case3Interrogations)};`);
     expect(r.code).toBe(0);
   });
 
-  it("flag on: a hidden clue name inside a dialogue line is caught", () => {
+  it("a hidden clue name inside a dialogue line is caught", () => {
     const tainted = { ...case3Interrogations };
     const kelvin = tainted[suspectIds[0]];
     tainted[suspectIds[0]] = { ...kelvin, openingLine: `${kelvin.openingLine} Ask me about the Special Projects ledger.` };
-    const r = checkBundle(`var p=${JSON.stringify(case3Fallback)};var d=${JSON.stringify(tainted)};`, true);
+    const r = checkBundle(`var p=${JSON.stringify(case3Fallback)};var d=${JSON.stringify(tainted)};`);
     expect(r.out).toContain('contains "Special Projects ledger"');
     expect(r.code).toBe(1);
   });

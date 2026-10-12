@@ -35,8 +35,8 @@ afterEach(() => {
   dirs = [];
 });
 // By default the test-only SQL (*_test.sql, Case 99) and Case 3's SQL (010/011) are left out, so
-// these checks see only Cases 1 and 2; withTestSql and withCase3Sql keep them. testCaseFlag and
-// case3Flag run the check as a Preview build with that flag would.
+// these checks see only Cases 1 and 2; withTestSql and withCase3Sql keep them. testCaseFlag runs
+// the check as a Preview build with that flag would.
 function checkBundle({
   extraSql = "",
   browserFile = "console.log('hello');",
@@ -44,7 +44,6 @@ function checkBundle({
   withTestSql = false,
   testCaseFlag = false,
   withCase3Sql = false,
-  case3Flag = false,
 } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "sabi-check-"));
   dirs.push(dir);
@@ -68,8 +67,6 @@ function checkBundle({
   delete env.SUPABASE_SERVICE_ROLE_KEY;
   if (testCaseFlag) env.NEXT_PUBLIC_ENABLE_TEST_CASE = "1";
   else delete env.NEXT_PUBLIC_ENABLE_TEST_CASE;
-  if (case3Flag) env.NEXT_PUBLIC_ENABLE_CASE3 = "1";
-  else delete env.NEXT_PUBLIC_ENABLE_CASE3;
   const r = spawnSync(process.execPath, [join(repo, "scripts/check-bundle.mjs")], { cwd: dir, env, encoding: "utf8" });
   return { code: r.status, out: r.stdout + r.stderr };
 }
@@ -259,43 +256,20 @@ values ('33333333-3333-4333-8333-000000009904', '11111111-1111-4111-8111-0000000
   });
 });
 
-describe("scripts/check-bundle.mjs and Case 3 (behind NEXT_PUBLIC_ENABLE_CASE3)", () => {
+describe("scripts/check-bundle.mjs and Case 3 (launched: always in the build)", () => {
   const sql011 = readFileSync(join(repo, "supabase/migrations/011_case3_private.sql"), "utf8");
   const hidden = insertRows(sql011, "locked_clues").map((r) => ({ id: uuids(r.id)[0], name: sqlString(r.name)!, desc: sqlString(r.found_description)! }));
   const cracked = sqlString(insertRows(sql011, "case_solutions")[0].cracked_text)!;
-  // Case 3's public story, as a flag-on build ships it.
+  // Case 3's public story, as the build ships it.
   const publicStory = `var c=${JSON.stringify(case3Fallback)};`;
 
-  it("flag off: passes with nothing of Case 3 in the build", () => {
-    const r = checkBundle({ withCase3Sql: true });
-    expect(r.out).toContain("Case 3 flag off");
+  it("the public story may appear, in browser and server files, with no flag", () => {
+    const r = checkBundle({ withCase3Sql: true, browserFile: publicStory, serverFile: publicStory });
+    expect(r.out).not.toContain("Case 3 flag");
     expect(r.code).toBe(0);
   });
 
-  it.each([
-    ["a suspect name", 'var a="Aisha Lawal";'],
-    ["the case id", 'var a="11111111-1111-4111-8111-000000000003";'],
-    ["the title", 'var a="The Clean Money";'],
-    ["a visible clue id", 'var a="33333333-3333-4333-8333-000000000306";'],
-  ])("flag off: fails when the build holds %s", (_label, leak) => {
-    const r = checkBundle({ withCase3Sql: true, browserFile: leak });
-    expect(r.out).toContain("NEXT_PUBLIC_ENABLE_CASE3 is off");
-    expect(r.code).toBe(1);
-  });
-
-  it("flag off: fails when only the server build holds it", () => {
-    const r = checkBundle({ withCase3Sql: true, serverFile: 'var a="Oga Chidi Eze";' });
-    expect(r.out).toContain(".next/server/chunks/ssr/route.js: contains Case 3");
-    expect(r.code).toBe(1);
-  });
-
-  it("flag on: the public story may appear", () => {
-    const r = checkBundle({ withCase3Sql: true, case3Flag: true, browserFile: publicStory, serverFile: publicStory });
-    expect(r.out).toContain("Case 3 flag on");
-    expect(r.code).toBe(0);
-  });
-
-  it("flag on: still fails for a hidden clue's name, text or id, the answer, or a rule field", () => {
+  it("still fails for a hidden clue's name, text or id, the answer, or a rule field", () => {
     const k6 = hidden.find((h) => h.name === "Special Projects ledger")!;
     const f4 = hidden.find((h) => h.name === "Signed Special Projects order")!;
     for (const leak of [
@@ -305,21 +279,30 @@ describe("scripts/check-bundle.mjs and Case 3 (behind NEXT_PUBLIC_ENABLE_CASE3)"
       `var a="${wordRuns(cracked)[5]}";`,
       'var a="source_clue_ids";',
     ]) {
-      const r = checkBundle({ withCase3Sql: true, case3Flag: true, browserFile: publicStory + leak });
+      const r = checkBundle({ withCase3Sql: true, browserFile: publicStory + leak });
       expect(r.code, leak).toBe(1);
     }
   });
 
-  it("flag on: still fails for an unlock rule's id", () => {
+  it("still fails for an unlock rule's id", () => {
     const ruleId = uuids(insertRows(sql011, "clue_unlocks")[5].id)[0];
-    const r = checkBundle({ withCase3Sql: true, case3Flag: true, browserFile: publicStory + `var a="${ruleId}";` });
+    const r = checkBundle({ withCase3Sql: true, browserFile: publicStory + `var a="${ruleId}";` });
     expect(r.out).toContain(`contains unlock rule id ${ruleId}`);
     expect(r.code).toBe(1);
   });
 
-  it("flag on: still fails when only some Case 3 suspect ids appear", () => {
-    const r = checkBundle({ withCase3Sql: true, case3Flag: true, browserFile: 'var a="22222222-2222-4222-8222-000000000302";' });
+  it("still fails when only some Case 3 suspect ids appear", () => {
+    const r = checkBundle({ withCase3Sql: true, browserFile: 'var a="22222222-2222-4222-8222-000000000302";' });
     expect(r.out).toContain("only some suspect ids");
     expect(r.code).toBe(1);
+  });
+
+  it("still fails for a locked picture name, and for the reworded Missed It text from 013", () => {
+    const sql013 = readFileSync(join(repo, "supabase/migrations/013_case3_sanni_missed.sql"), "utf8");
+    const missed = /missed_text = '((?:[^']|'')*)'/.exec(sql013)![1].replaceAll("''", "'");
+    for (const leak of ['var a="fe084e68d7558946706745222e915399";', `var a="${wordRuns(missed)[3]}";`]) {
+      const r = checkBundle({ withCase3Sql: true, browserFile: publicStory + leak });
+      expect(r.code, leak).toBe(1);
+    }
   });
 });

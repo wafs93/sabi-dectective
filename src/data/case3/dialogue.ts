@@ -1,9 +1,8 @@
 import type { Interrogation } from "@/data/interrogations";
 
 // Case 3 "The Clean Money": interrogation dialogue, keyed by suspect id (same shape as Case 1
-// and Case 2 in src/data/interrogations.ts). Registered only in builds with
-// NEXT_PUBLIC_ENABLE_CASE3=1; with it off, the build drops this file. No runtime imports, on
-// purpose, so the ids are written out (they match src/data/case3/case3.ts; a test checks).
+// and Case 2 in src/data/interrogations.ts), which registers it. The ids are written out (they
+// match src/data/case3/case3.ts; a test checks).
 //
 // Confronts are keyed by VISIBLE clue ids only (V1 to V8). Some of them reveal a hidden clue on
 // the server, some don't; nothing here says which, and no line states a hidden clue's facts.
