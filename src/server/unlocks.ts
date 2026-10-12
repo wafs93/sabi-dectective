@@ -66,3 +66,84 @@ export function remainingLocked(
       kinds: [...new Set(rules.filter((r) => r.unlocksClueId === clueId).map((r) => r.kind))],
     }));
 }
+
+// ---- Guessing guard ----
+// Counts WRONG unlock attempts (a confront or combine that reveals nothing) per client.
+// 10 wrong within 10 minutes starts a cooldown: 2 minutes, then 4, 8, 16, capped at 30, doubling
+// each time it is hit again. A correct unlock is never counted and never lowers the penalty.
+// The penalty level is forgotten after a quiet hour (no cooldown hit). Kept in memory, per server
+// instance, like the rate limiter: it resets on a cold start and is not shared between instances.
+
+export const GUESS_LIMIT = 10;
+export const GUESS_WINDOW_MS = 10 * 60_000;
+export const COOLDOWN_BASE_MS = 2 * 60_000;
+export const COOLDOWN_MAX_MS = 30 * 60_000;
+export const PENALTY_MEMORY_MS = 60 * 60_000;
+
+export type GuessGuard = {
+  // Before checking an attempt: is this client in a cooldown?
+  check: (key: string) => { allowed: true } | { allowed: false; retryAfterSeconds: number };
+  // After an attempt that revealed nothing.
+  recordWrong: (key: string) => void;
+};
+
+type GuessState = { wrong: number[]; level: number; blockedUntil: number; lastBlockAt: number };
+
+export function createGuessGuard({
+  limit = GUESS_LIMIT,
+  windowMs = GUESS_WINDOW_MS,
+  baseMs = COOLDOWN_BASE_MS,
+  maxMs = COOLDOWN_MAX_MS,
+  memoryMs = PENALTY_MEMORY_MS,
+  now = Date.now,
+  maxKeys = 10_000,
+}: {
+  limit?: number;
+  windowMs?: number;
+  baseMs?: number;
+  maxMs?: number;
+  memoryMs?: number;
+  now?: () => number;
+  maxKeys?: number;
+} = {}): GuessGuard {
+  const clients = new Map<string, GuessState>();
+
+  const forgotten = (s: GuessState, t: number) =>
+    s.blockedUntil <= t && s.wrong.every((w) => w <= t - windowMs) && s.lastBlockAt <= t - memoryMs;
+
+  const state = (key: string, t: number): GuessState => {
+    if (clients.size >= maxKeys) {
+      for (const [k, s] of clients) if (forgotten(s, t)) clients.delete(k);
+      if (clients.size >= maxKeys) clients.clear();
+    }
+    let s = clients.get(key);
+    if (!s) {
+      s = { wrong: [], level: 0, blockedUntil: 0, lastBlockAt: 0 };
+      clients.set(key, s);
+    }
+    if (s.level > 0 && s.blockedUntil <= t && s.lastBlockAt <= t - memoryMs) s.level = 0;
+    return s;
+  };
+
+  return {
+    check(key) {
+      const t = now();
+      const s = state(key, t);
+      if (s.blockedUntil > t) return { allowed: false, retryAfterSeconds: Math.ceil((s.blockedUntil - t) / 1000) };
+      return { allowed: true };
+    },
+    recordWrong(key) {
+      const t = now();
+      const s = state(key, t);
+      s.wrong = s.wrong.filter((w) => w > t - windowMs);
+      s.wrong.push(t);
+      if (s.wrong.length >= limit) {
+        s.level++;
+        s.blockedUntil = t + Math.min(baseMs * 2 ** (s.level - 1), maxMs);
+        s.lastBlockAt = t;
+        // A fresh count once the cooldown is over.
+        s.wrong = [];
+      }
+    },
+  };
+}

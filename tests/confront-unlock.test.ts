@@ -158,7 +158,7 @@ describe("createUnlocker (when to ask)", () => {
     expect(a.unlocked).toEqual([]);
     const limited = (async () => Response.json({ error: "x" }, { status: 429 })) as typeof fetch;
     const b = unlockerWith(limited);
-    expect(await b.unlocker.attempt(alpha, rubberDuck)).toEqual({ status: "error" });
+    expect(await b.unlocker.attempt(alpha, rubberDuck)).toEqual({ status: "error", reason: "rate-limited" });
     expect(b.unlocked).toEqual([]);
   });
 

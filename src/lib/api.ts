@@ -14,6 +14,7 @@ export type SubmitOutcome =
 type RequestOptions = { fetchImpl?: typeof fetch; timeoutMs?: number };
 
 const RECONNECT = "Reconnect to submit your accusation. Your progress is saved.";
+const SERVER_TROUBLE = "Couldn't check your accusation right now. Tap to try again.";
 
 export async function submitAccusation(
   caseId: string,
@@ -57,7 +58,7 @@ export async function submitAccusation(
   if (res.status === 429) {
     return { ok: false, message: "Too many accusations. Wait a minute and try again." };
   }
-  if (res.status >= 500) return { ok: false, message: RECONNECT };
+  if (res.status >= 500) return { ok: false, message: SERVER_TROUBLE, retry: true };
 
   let message = "That accusation could not be checked.";
   try {
@@ -75,12 +76,36 @@ export async function submitAccusation(
 
 export const UNLOCK_TIMEOUT_MS = REQUEST_TIMEOUT_MS;
 
+// Why a check couldn't be made. Left out for a timeout or no connection ("slow").
+// - "cooldown": too many wrong tries; the server refuses unlocks for retryAfterSeconds.
+// - "rate-limited": too many tries in a minute.
+// - "server": the server had a problem.
+export type UnlockFailure =
+  | { status: "error" }
+  | { status: "error"; reason: "cooldown"; retryAfterSeconds: number }
+  | { status: "error"; reason: "rate-limited" | "server" };
+
 export type UnlockAnswer =
   | { status: "unlocked"; clue: UnlockedClue }
   | { status: "already-unlocked" }
   // No match, or the case has no unlocks at all: either way, nothing connects.
   | { status: "no-match" }
-  | { status: "error" };
+  | UnlockFailure;
+
+// Reads a refused or failed reply. Never retries by itself.
+async function failure(res: Response): Promise<UnlockFailure> {
+  if (res.status !== 429) return { status: "error", reason: "server" };
+  try {
+    const body = (await res.json()) as { status?: unknown; retryAfterSeconds?: unknown };
+    const seconds = Number(body.retryAfterSeconds);
+    if (body.status === "cooldown" && Number.isFinite(seconds) && seconds > 0) {
+      return { status: "error", reason: "cooldown", retryAfterSeconds: Math.ceil(seconds) };
+    }
+  } catch {
+    // not a cooldown reply
+  }
+  return { status: "error", reason: "rate-limited" };
+}
 
 type UnlockOptions = RequestOptions;
 
@@ -97,7 +122,7 @@ async function postUnlock(
       body: JSON.stringify(body),
       signal: controller.signal,
     });
-    if (!res.ok) return { status: "error" };
+    if (!res.ok) return await failure(res);
     const answer = (await res.json()) as { status?: unknown; clue?: unknown };
     switch (answer?.status) {
       case "unlocked": {

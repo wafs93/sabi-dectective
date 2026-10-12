@@ -1,3 +1,4 @@
+import type { UnlockFailure } from "@/lib/api";
 import type { UnlockedClue } from "@/lib/types";
 
 // Decides when to ask the server about a confront, for one case.
@@ -11,8 +12,8 @@ export type ConfrontOutcome =
   | { status: "unlocked"; clue: UnlockedClue }
   // Answered: nothing new to reveal (no match, already held, or off).
   | { status: "nothing" }
-  // Couldn't check (timeout, no connection, rate limit): the player may try again.
-  | { status: "error" }
+  // Couldn't check (timeout, no connection, rate limit, cooldown): see UnlockFailure.
+  | UnlockFailure
   // This confront is already being checked: nothing was sent.
   | { status: "busy" };
 
@@ -24,7 +25,7 @@ type UnlockReply =
   | { status: "unlocked"; clue: UnlockedClue }
   | { status: "already-unlocked" }
   | { status: "no-match" }
-  | { status: "error" };
+  | UnlockFailure;
 
 export function createUnlocker({
   enabled,
@@ -54,7 +55,7 @@ export function createUnlocker({
       } finally {
         pending.delete(key);
       }
-      if (reply.status === "error") return { status: "error" };
+      if (reply.status === "error") return reply;
       answered.add(key);
       // Already held after all (e.g. unlocked by another route): nothing new to show.
       if (reply.status !== "unlocked" || heldUnlockedIds().includes(reply.clue.id)) return { status: "nothing" };
@@ -73,8 +74,8 @@ export type CombineOutcome =
   | { status: "no-match" }
   // This pair already failed this session: not sent again.
   | { status: "already-tried" }
-  // Couldn't check (error, rate limit, timeout, offline): the player may try again.
-  | { status: "error" }
+  // Couldn't check (timeout, offline, rate limit, cooldown, server): see UnlockFailure.
+  | UnlockFailure
   // The switch is off, or the two clues are the same: nothing is sent.
   | { status: "off" };
 
@@ -96,12 +97,7 @@ export function createCombiner({
   request: (
     clueIds: readonly [string, string],
     heldUnlockedIds: string[],
-  ) => Promise<
-    | { status: "unlocked"; clue: UnlockedClue }
-    | { status: "already-unlocked" }
-    | { status: "no-match" }
-    | { status: "error" }
-  >;
+  ) => Promise<UnlockReply>;
   heldUnlockedIds: () => string[];
   onUnlocked: (clue: UnlockedClue, from: readonly [string, string]) => void;
 }): Combiner {

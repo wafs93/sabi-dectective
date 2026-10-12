@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import Placeholder, { clueIcon } from "@/components/Placeholder";
 import { Button, SectionLabel } from "@/components/ui";
 import { interrogations, type InterrogationQuestion } from "@/data/interrogations";
-import { SLOW_CONNECTION, STILL_WORKING, withStillWorking } from "@/lib/slow-request";
+import { STILL_WORKING, unlockFailureMessage, withStillWorking } from "@/lib/slow-request";
 import type { Clue, Contradiction, Progress, Suspect } from "@/lib/types";
 import type { ConfrontOutcome } from "@/lib/unlocker";
 
@@ -43,6 +43,8 @@ export default function Interrogation({
   // Confronts whose unlock check is still out, by question id: "waiting" for the first few
   // seconds, then "slow" (Still working...), or "failed" (offer a retry).
   const [checks, setChecks] = useState<Record<string, "waiting" | "slow" | "failed">>({});
+  // What to say for a failed check, and whether tapping it sends the check again.
+  const [failures, setFailures] = useState<Record<string, { text: string; retry: boolean }>>({});
   const nextId = useRef(1);
   const endRef = useRef<HTMLLIElement>(null);
   const mounted = useRef(true);
@@ -122,6 +124,7 @@ export default function Interrogation({
     void withStillWorking(onConfrontUnlock(suspect.id, q.unlockedByClueId!), slow).then((outcome) => {
       if (!mounted.current) return;
       if (outcome.status === "error") {
+        setFailures((prev) => ({ ...prev, [q.id]: unlockFailureMessage(outcome) }));
         setCheck(q.id, "failed");
         return;
       }
@@ -244,15 +247,24 @@ export default function Interrogation({
               <p key={q.id} role="status" className="mt-3 text-center text-sm font-semibold text-muted">
                 {STILL_WORKING}
               </p>
-            ) : (
+            ) : failures[q.id]?.retry ? (
               <button
                 key={q.id}
                 type="button"
                 onClick={() => checkUnlock(q)}
                 className="mt-3 min-h-11 w-full rounded-lg border border-brass-dim px-3 text-sm font-semibold text-brass hover:bg-ink-800"
               >
-                {SLOW_CONNECTION}
+                {failures[q.id].text}
               </button>
+            ) : (
+              // A cooldown or rate limit: calm, and not a button, so nothing retries early.
+              <p
+                key={q.id}
+                role="status"
+                className="mt-3 rounded-lg border border-ink-600 bg-ink-800 p-3 text-center text-sm text-paper/90"
+              >
+                {failures[q.id]?.text}
+              </p>
             ),
           )}
       </section>

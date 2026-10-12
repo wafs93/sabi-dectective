@@ -1,7 +1,7 @@
 import "server-only";
 import type { LockedClue, UnlockData } from "@/server/locked";
 import { clientIp, type RateLimiter } from "@/server/rate-limit";
-import { checkCombine, checkConfront } from "@/server/unlocks";
+import { checkCombine, checkConfront, type GuessGuard } from "@/server/unlocks";
 
 // POST /api/unlock: checks one confront or combine against the case's private rules.
 // It answers only about the one attempt: the revealed clue, or a plain "no". It never
@@ -26,6 +26,8 @@ export type UnlockResponse =
 export type UnlockDeps = {
   loadUnlockData: (caseId: string) => Promise<UnlockData | null>;
   limiter: RateLimiter;
+  // Cooldown after too many wrong attempts. Optional so tests can leave it out.
+  guard?: GuessGuard;
 };
 
 const isUuid = (v: unknown): v is string => typeof v === "string" && UUID_RE.test(v);
@@ -72,6 +74,7 @@ export function parseUnlockRequest(
   return { ok: false, error: 'kind must be "confront" or "combine".' };
 }
 
+export const COOLDOWN_MESSAGE = "Too many wrong tries. Take a break and try again later.";
 const NO_MATCH: UnlockResponse = { status: "no-match", message: "These don't connect." };
 const NO_UNLOCKS: UnlockResponse = { status: "no-unlocks", message: "No unlocks for this case." };
 
@@ -82,7 +85,8 @@ function json(status: number, body: unknown, headers: Record<string, string> = {
 export function createUnlockHandler(deps: UnlockDeps) {
   return async function POST(request: Request): Promise<Response> {
     try {
-      const limit = deps.limiter.take(clientIp(request));
+      const ip = clientIp(request);
+      const limit = deps.limiter.take(ip);
       if (!limit.allowed) {
         return json(
           429,
@@ -90,6 +94,20 @@ export function createUnlockHandler(deps: UnlockDeps) {
           { "Retry-After": String(limit.retryAfterSeconds) },
         );
       }
+      // Too many wrong guesses: refused before anything is read or checked, and the reply says
+      // nothing about the case, its clues or the attempt.
+      const cooldown = deps.guard?.check(ip);
+      if (cooldown && !cooldown.allowed) {
+        return json(
+          429,
+          { status: "cooldown", error: COOLDOWN_MESSAGE, retryAfterSeconds: cooldown.retryAfterSeconds },
+          { "Retry-After": String(cooldown.retryAfterSeconds) },
+        );
+      }
+      const wrong = (response: Response) => {
+        deps.guard?.recordWrong(ip);
+        return response;
+      };
 
       const declared = Number(request.headers.get("content-length") ?? 0);
       if (declared > MAX_BODY_BYTES) return json(400, { error: "Request body is too large." });
@@ -125,7 +143,7 @@ export function createUnlockHandler(deps: UnlockDeps) {
           ? checkConfront(data.rules, { suspectId: req.suspectId, clueId: req.clueId }, req.unlockedClueIds)
           : checkCombine(data.rules, req.clueIds, req.unlockedClueIds);
 
-      if (check.status === "no-match") return json(200, NO_MATCH);
+      if (check.status === "no-match") return wrong(json(200, NO_MATCH));
       if (check.status === "already-unlocked") {
         return json(200, { status: "already-unlocked", clueId: check.clueId } satisfies UnlockResponse);
       }
@@ -135,7 +153,7 @@ export function createUnlockHandler(deps: UnlockDeps) {
         // A rule pointing at a locked clue of another case or a missing row: a data mistake.
         // Logged for us; the player just gets the plain answer.
         console.error("unlock: rule matched but its locked clue is missing for this case:", check.clueId);
-        return json(200, NO_MATCH);
+        return wrong(json(200, NO_MATCH));
       }
       const { id, name, found_description, icon_image_url } = clue;
       return json(200, {

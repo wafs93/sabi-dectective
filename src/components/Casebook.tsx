@@ -3,7 +3,7 @@ import Placeholder, { clueIcon } from "@/components/Placeholder";
 import { Button, ScreenHeader, SectionLabel } from "@/components/ui";
 import type { CaseArt } from "@/data/art";
 import { heldClues, type LoadedCase } from "@/lib/game";
-import { SLOW_CONNECTION, STILL_WORKING, createSingleFlight, withStillWorking } from "@/lib/slow-request";
+import { STILL_WORKING, createSingleFlight, unlockFailureMessage, withStillWorking } from "@/lib/slow-request";
 import type { Clue, Progress } from "@/lib/types";
 import { pairKey, type CombineOutcome, type UnlockKind } from "@/lib/unlocker";
 
@@ -42,6 +42,8 @@ export default function Casebook({
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const [message, setMessage] = useState<string | null>(null);
+  // The message is a failed check that tapping sends again (a slow connection or server trouble).
+  const [retryable, setRetryable] = useState(false);
   const [busy, setBusy] = useState(false);
   // Still waiting after a few seconds: say so.
   const [slow, setSlow] = useState(false);
@@ -70,11 +72,13 @@ export default function Casebook({
     setSelecting(false);
     setSelected([]);
     setMessage(null);
+    setRetryable(false);
   };
 
   // Tapping a selected clue again drops it; at most two can be picked.
   const toggle = (id: string) => {
     setMessage(null);
+    setRetryable(false);
     setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : prev.length < 2 ? [...prev, id] : prev));
   };
 
@@ -85,6 +89,7 @@ export default function Casebook({
       setBusy(true);
       setSlow(false);
       setMessage(null);
+      setRetryable(false);
       return withStillWorking(locked.onConnect(a, b), () => mounted.current && setSlow(true));
     });
     if (!sent.sent || !mounted.current) return;
@@ -113,10 +118,14 @@ export default function Casebook({
       case "already-tried":
         setMessage("Already tried");
         break;
-      case "error":
-        // The pair stays picked, so tapping the message sends it again.
-        setMessage(SLOW_CONNECTION);
+      case "error": {
+        // The pair stays picked, so a retryable message can be tapped to send it again.
+        // A cooldown or rate limit is shown calmly and is never sent again by itself.
+        const shown = unlockFailureMessage(outcome);
+        setMessage(shown.text);
+        setRetryable(shown.retry);
         break;
+      }
     }
   };
 
@@ -146,9 +155,9 @@ export default function Casebook({
                   "Already tried"
                 ) : busy ? (
                   slow ? STILL_WORKING : "Checking…"
-                ) : message === SLOW_CONNECTION && selected.length === 2 ? (
+                ) : retryable && message && selected.length === 2 ? (
                   <button type="button" onClick={connect} className="min-h-11 text-left underline underline-offset-4">
-                    {SLOW_CONNECTION}
+                    {message}
                   </button>
                 ) : (
                   message

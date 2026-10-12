@@ -1,3 +1,5 @@
+import type { UnlockFailure } from "@/lib/api";
+
 // Feedback for requests that can be slow on mobile data (/api/unlock and /api/accuse).
 // - After STILL_WORKING_AFTER_MS with no reply, the screen says STILL_WORKING.
 // - If the request times out or fails, the screen offers SLOW_CONNECTION as a retry.
@@ -6,6 +8,28 @@
 export const STILL_WORKING_AFTER_MS = 3000;
 export const STILL_WORKING = "Still working...";
 export const SLOW_CONNECTION = "Slow connection. Tap to try again.";
+export const SERVER_TROUBLE = "Couldn't check that right now. Tap to try again.";
+export const RATE_LIMITED = "Too many tries at once. Wait a minute, then try again.";
+export const cooldownMessage = (seconds: number) => {
+  const minutes = Math.max(1, Math.ceil(seconds / 60));
+  return `Take a breath and look over your evidence. You can try again in ${minutes} ${minutes === 1 ? "minute" : "minutes"}.`;
+};
+
+// What to show when an unlock check couldn't be made, and whether tapping it should send the
+// same check again. A cooldown or rate limit is never retried by a tap or by itself.
+export function unlockFailureMessage(failure: UnlockFailure): { text: string; retry: boolean } {
+  if (!("reason" in failure)) return { text: SLOW_CONNECTION, retry: true };
+  switch (failure.reason) {
+    case "cooldown":
+      return { text: cooldownMessage(failure.retryAfterSeconds), retry: false };
+    case "rate-limited":
+      return { text: RATE_LIMITED, retry: false };
+    case "server":
+      return { text: SERVER_TROUBLE, retry: true };
+    default:
+      return { text: SLOW_CONNECTION, retry: true };
+  }
+}
 
 // Waits for the request, calling onSlow once if it is still waiting after `afterMs`.
 export async function withStillWorking<T>(

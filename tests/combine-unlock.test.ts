@@ -87,7 +87,7 @@ describe("requestCombineUnlock", () => {
     expect(await requestCombineUnlock(CASE99_ID, [redSock, blueSock], [], { fetchImpl: failing })).toEqual({ status: "error" });
     const limited = mockRoute({ limit: 1 });
     await requestCombineUnlock(CASE99_ID, [redSock, rubberDuck], [], { fetchImpl: limited });
-    expect(await requestCombineUnlock(CASE99_ID, [redSock, blueSock], [], { fetchImpl: limited })).toEqual({ status: "error" });
+    expect(await requestCombineUnlock(CASE99_ID, [redSock, blueSock], [], { fetchImpl: limited })).toEqual({ status: "error", reason: "rate-limited" });
     const hangs = ((_u: RequestInfo | URL, init?: RequestInit) =>
       new Promise((_r, reject) => init?.signal?.addEventListener("abort", () => reject(new Error("aborted"))))) as typeof fetch;
     expect(await requestCombineUnlock(CASE99_ID, [redSock, blueSock], [], { fetchImpl: hangs, timeoutMs: 30 })).toEqual({ status: "error" });
@@ -134,7 +134,7 @@ describe("createCombiner", () => {
   it("a rate-limited call says error, isn't remembered as tried, and shows nothing", async () => {
     const limited = (async () => Response.json({ error: "Too many tries." }, { status: 429 })) as typeof fetch;
     const { combiner, unlocked } = combinerWith(limited);
-    expect(await combiner.connect(redSock, blueSock)).toEqual({ status: "error" });
+    expect(await combiner.connect(redSock, blueSock)).toEqual({ status: "error", reason: "rate-limited" });
     expect(combiner.hasTried(redSock, blueSock)).toBe(false);
     expect(unlocked).toEqual([]);
   });
