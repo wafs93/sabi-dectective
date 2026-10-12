@@ -195,6 +195,7 @@ const fieldNeedles = [
   "locked_clues",
   "clue_unlocks",
   "source_clue_ids",
+  "unlocks_clue_id",
 ];
 
 const secretValues = [process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()].filter(Boolean);

@@ -11,8 +11,8 @@ import Result from "@/components/Result";
 import SceneScreen from "@/components/SceneScreen";
 import Suspects from "@/components/Suspects";
 import { caseArt } from "@/data/art";
-import { hasLockedClues, listCases } from "@/data/cases";
-import { requestConfrontUnlock } from "@/lib/api";
+import { hasLockedClues, hiddenClueKinds, listCases } from "@/data/cases";
+import { requestCombineUnlock, requestConfrontUnlock } from "@/lib/api";
 import {
   clearProgress,
   emptyProgress,
@@ -21,12 +21,22 @@ import {
   loadCase,
   readProgress,
   readResult,
+  readUnlockRecord,
   writeProgress,
   writeResult,
+  writeUnlockRecord,
   type LoadedCase,
 } from "@/lib/game";
 import { readIntroSeen, shouldShowIntro, writeIntroSeen, type IntroStep } from "@/lib/intro";
-import { createUnlocker, type Unlocker } from "@/lib/unlocker";
+import {
+  createCombiner,
+  createUnlocker,
+  pairKey,
+  remainingSlots,
+  type Combiner,
+  type UnlockRecord,
+  type Unlocker,
+} from "@/lib/unlocker";
 import {
   bestResult,
   caseStatus,
@@ -39,7 +49,7 @@ import {
   writeRecord,
   type PlayerRecord,
 } from "@/lib/record";
-import type { Contradiction, Progress, SavedResult } from "@/lib/types";
+import type { Contradiction, Progress, SavedResult, UnlockedClue } from "@/lib/types";
 
 type Screen =
   | { name: "intro"; step: IntroStep }
@@ -83,6 +93,9 @@ export default function Game() {
   const [record, setRecord] = useState<PlayerRecord>(emptyRecord);
   // Unlocked clues the player hasn't seen in the Casebook yet (shown as "New").
   const [newClueIds, setNewClueIds] = useState<string[]>([]);
+  // How each locked clue was unlocked, and pairs that didn't connect this session.
+  const [unlockRecord, setUnlockRecord] = useState<UnlockRecord>({});
+  const [triedPairs, setTriedPairs] = useState<string[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -119,6 +132,7 @@ export default function Game() {
         setBundle(loaded);
         setProgress(readProgress(open));
         setSavedResult(readResult(open));
+        setUnlockRecord(readUnlockRecord(open));
         if (showIntro) setScreen({ name: "intro", step: "cold-open" });
         setRecord(rec);
       })
@@ -164,15 +178,48 @@ export default function Game() {
           enabled: true,
           request: (s, c, held) => requestConfrontUnlock(caseId, s, c, held),
           heldUnlockedIds: () => (progressRef.current.unlockedClues ?? []).map((u) => u.id),
-          onUnlocked: (clue) => {
-            updateProgress((prev) => addUnlockedClue(prev, clue));
-            setNewClueIds((prev) => (prev.includes(clue.id) ? prev : [...prev, clue.id]));
-          },
+          onUnlocked: (clue) => revealUnlocked(clue, { kind: "confront" }),
         }),
       };
     }
     return unlockerRef.current.unlocker.attempt(suspectId, clueId);
   };
+
+  // Combine, from the Casebook. One combiner per game, like the unlocker above.
+  const combinerRef = useRef<{ caseId: string; combiner: Combiner } | null>(null);
+  const attemptConnect = async (a: string, b: string) => {
+    if (!unlocksOn || caseId === null) return { status: "off" as const };
+    if (combinerRef.current?.caseId !== caseId) {
+      combinerRef.current = {
+        caseId,
+        combiner: createCombiner({
+          enabled: true,
+          request: (pair, held) => requestCombineUnlock(caseId, pair, held),
+          heldUnlockedIds: () => (progressRef.current.unlockedClues ?? []).map((u) => u.id),
+          onUnlocked: (clue, from) => revealUnlocked(clue, { kind: "combine", from }),
+        }),
+      };
+    }
+    const outcome = await combinerRef.current.combiner.connect(a, b);
+    if (outcome.status === "no-match") {
+      const key = pairKey(a, b);
+      setTriedPairs((prev) => (prev.includes(key) ? prev : [...prev, key]));
+    }
+    return outcome;
+  };
+
+  // A newly unlocked clue: saved in progress, marked New, and how it was found recorded.
+  function revealUnlocked(clue: UnlockedClue, how: UnlockRecord[string]) {
+    updateProgress((prev) => addUnlockedClue(prev, clue));
+    setNewClueIds((prev) => (prev.includes(clue.id) ? prev : [...prev, clue.id]));
+    if (activeCase === null) return;
+    const n = activeCase;
+    setUnlockRecord((prev) => {
+      const next = { ...prev, [clue.id]: how };
+      writeUnlockRecord(n, next);
+      return next;
+    });
+  }
 
   const collectClue = useCallback(
     (clueId: string) =>
@@ -198,7 +245,10 @@ export default function Game() {
     if (activeCase === null) return;
     clearProgress(activeCase);
     setNewClueIds([]);
+    setUnlockRecord({});
+    setTriedPairs([]);
     unlockerRef.current = null;
+    combinerRef.current = null;
     setProgress(emptyProgress);
     setSavedResult(null);
     setScreen({ name: "home" });
@@ -232,7 +282,9 @@ export default function Game() {
     if (n !== activeCase) {
       setBundle(null);
       setNewClueIds([]);
+      setTriedPairs([]);
       unlockerRef.current = null;
+      combinerRef.current = null;
       setCaseNumber(n);
     }
     setScreen(saved ? { name: "result", saved } : { name: "scene" });
@@ -354,7 +406,30 @@ export default function Game() {
       }
 
       case "casebook":
-        return <Casebook bundle={bundle} art={art} progress={progress} newClueIds={newClueIds} />;
+        return (
+          <Casebook
+            bundle={bundle}
+            art={art}
+            progress={progress}
+            newClueIds={newClueIds}
+            locked={
+              unlocksOn && activeCase !== null
+                ? {
+                    onConnect: attemptConnect,
+                    triedPairs,
+                    connections: Object.entries(unlockRecord).flatMap(([clueId, how]) =>
+                      how.kind === "combine" && how.from ? [{ clueId, from: how.from }] : [],
+                    ),
+                    slots: remainingSlots(
+                      hiddenClueKinds(activeCase),
+                      (progress.unlockedClues ?? []).map((c) => c.id),
+                      unlockRecord,
+                    ),
+                  }
+                : undefined
+            }
+          />
+        );
 
       case "accuse":
         return (

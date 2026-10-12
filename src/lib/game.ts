@@ -8,6 +8,7 @@ import type {
   SavedResult,
   UnlockedClue,
 } from "@/lib/types";
+import type { UnlockRecord } from "@/lib/unlocker";
 
 export type LoadedCase = CaseBundle & { source: "supabase" | "local" };
 
@@ -177,6 +178,48 @@ export function writeProgress(caseNumber: number, progress: Progress): void {
   }
 }
 
+// How each locked clue was unlocked (confront, or which two clues were connected), so the
+// Casebook can show the right slots and "connected" links after a reload. Kept under its
+// own key so saved progress keeps its format. Untrusted and display only, like progress.
+const unlocksKey = (caseNumber: number) => `sabi-detective:case-${caseNumber}:unlocks`;
+
+export function parseUnlockRecord(raw: unknown): UnlockRecord {
+  const clean: UnlockRecord = {};
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return clean;
+  for (const [id, v] of Object.entries(raw).slice(0, MAX_UNLOCKED_CLUES)) {
+    if (!UUID_RE.test(id) || typeof v !== "object" || v === null) continue;
+    const { kind, from } = v as { kind?: unknown; from?: unknown };
+    if (kind === "confront") clean[id.toLowerCase()] = { kind };
+    else if (
+      kind === "combine" &&
+      Array.isArray(from) &&
+      from.length === 2 &&
+      from.every((f) => typeof f === "string" && UUID_RE.test(f)) &&
+      from[0] !== from[1]
+    ) {
+      clean[id.toLowerCase()] = { kind, from: [from[0].toLowerCase(), from[1].toLowerCase()] };
+    }
+  }
+  return clean;
+}
+
+export function readUnlockRecord(caseNumber: number): UnlockRecord {
+  try {
+    const raw = window.localStorage.getItem(unlocksKey(caseNumber));
+    return raw ? parseUnlockRecord(JSON.parse(raw)) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function writeUnlockRecord(caseNumber: number, record: UnlockRecord): void {
+  try {
+    window.localStorage.setItem(unlocksKey(caseNumber), JSON.stringify(record));
+  } catch {
+    // Storage unavailable: slots and links fall back to what is known this visit.
+  }
+}
+
 // The saved result is only for showing the Result screen again after a refresh.
 // It is not trusted for anything else.
 export function readResult(caseNumber: number): SavedResult | null {
@@ -209,6 +252,7 @@ export function clearProgress(caseNumber: number): void {
   try {
     window.localStorage.removeItem(progressKey(caseNumber));
     window.localStorage.removeItem(resultKey(caseNumber));
+    window.localStorage.removeItem(unlocksKey(caseNumber));
   } catch {
     // ignore
   }

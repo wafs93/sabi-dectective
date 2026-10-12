@@ -163,6 +163,7 @@ body {
 .anim-breathe { animation: hotspot-breathe 2.8s ease-in-out infinite; }
 .anim-found { animation: found-flash 700ms ease-out; }
 .anim-toast { animation: toast-in 200ms ease-out; }
+.anim-reveal { animation: reveal-up 450ms ease-out; }
 
 @media (prefers-reduced-motion: reduce) {
   *,

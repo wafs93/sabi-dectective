@@ -115,8 +115,31 @@ describe("scripts/check-bundle.mjs and locked clues", () => {
     expect(r.code).toBe(1);
   });
 
-  it("bans the three names even with no locked clues yet", () => {
-    for (const name of ["locked_clues", "clue_unlocks", "source_clue_ids"]) {
+  it("passes with the public locked-clue summary in a browser file", () => {
+    // What the browser may know for a switched-on case: how many clues are hidden and how
+    // each is revealed, plus the slot labels. Never names, ids, images or text.
+    const summary = 'var s={1:false,2:false,99:{hidden:["confront","combine"]}};' +
+      'var l={confront:{icon:"🗣️",label:"Revealed by questioning"},combine:{icon:"🔗",label:"Revealed by connecting clues"}};' +
+      'var t="Hidden evidence ("+2+" left)";';
+    const r = checkBundle({ extraSql: LOCKED_SQL, browserFile: summary });
+    expect(r.out).toContain("1 locked clue ids");
+    expect(r.code).toBe(0);
+  });
+
+  it("still fails when the summary is joined by a locked clue's details", () => {
+    const summary = 'var s={99:{hidden:["confront","combine"]}};';
+    for (const leak of [
+      'var n="Test locked confession note";',
+      `var i="${LOCKED_ID}";`,
+      'var m="q7Zt4pLx9.jpg";',
+      'var d="the pretend suspect wrote a pretend note about the";',
+    ]) {
+      expect(checkBundle({ extraSql: LOCKED_SQL, browserFile: summary + leak }).code).toBe(1);
+    }
+  });
+
+  it("bans the table and field names even with no locked clues yet", () => {
+    for (const name of ["locked_clues", "clue_unlocks", "source_clue_ids", "unlocks_clue_id"]) {
       expect(checkBundle({ browserFile: `var a="${name}";` }).code).toBe(1);
     }
   });

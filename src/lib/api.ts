@@ -52,35 +52,75 @@ export async function submitAccusation(
   return { ok: false, message };
 }
 
-// Asks the server whether confronting this suspect with this clue reveals a locked clue.
-// Returns the clue only on a clear "unlocked"; anything else (no match, already held, no
-// unlocks, an error, a rate limit, a timeout, no connection) is null. It never throws.
-// The answer is untrusted: the clue is checked like saved progress before it is used.
+// ---- /api/unlock ----
+// The answer is untrusted: an unlocked clue is checked like saved progress before it is
+// used. These never throw: an error, a rate limit, a timeout or no connection is "error".
+
 export const UNLOCK_TIMEOUT_MS = 5000;
 
-export async function requestConfrontUnlock(
-  caseId: string,
-  suspectId: string,
-  clueId: string,
-  unlockedClueIds: string[],
-  { fetchImpl = fetch, timeoutMs = UNLOCK_TIMEOUT_MS }: { fetchImpl?: typeof fetch; timeoutMs?: number } = {},
-): Promise<UnlockedClue | null> {
+export type UnlockAnswer =
+  | { status: "unlocked"; clue: UnlockedClue }
+  | { status: "already-unlocked" }
+  // No match, or the case has no unlocks at all: either way, nothing connects.
+  | { status: "no-match" }
+  | { status: "error" };
+
+type UnlockOptions = { fetchImpl?: typeof fetch; timeoutMs?: number };
+
+async function postUnlock(
+  body: Record<string, unknown>,
+  { fetchImpl = fetch, timeoutMs = UNLOCK_TIMEOUT_MS }: UnlockOptions = {},
+): Promise<UnlockAnswer> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetchImpl("/api/unlock", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ caseId, kind: "confront", suspectId, clueId, unlockedClueIds }),
+      body: JSON.stringify(body),
       signal: controller.signal,
     });
-    if (!res.ok) return null;
-    const body = (await res.json()) as { status?: unknown; clue?: unknown };
-    if (body?.status !== "unlocked") return null;
-    return parseUnlockedClues([body.clue])[0] ?? null;
+    if (!res.ok) return { status: "error" };
+    const answer = (await res.json()) as { status?: unknown; clue?: unknown };
+    switch (answer?.status) {
+      case "unlocked": {
+        const clue = parseUnlockedClues([answer.clue])[0];
+        return clue ? { status: "unlocked", clue } : { status: "error" };
+      }
+      case "already-unlocked":
+        return { status: "already-unlocked" };
+      case "no-match":
+      case "no-unlocks":
+        return { status: "no-match" };
+      default:
+        return { status: "error" };
+    }
   } catch {
-    return null;
+    return { status: "error" };
   } finally {
     clearTimeout(timer);
   }
+}
+
+// Does confronting this suspect with this clue reveal a locked clue? The clue, or null for
+// anything else (no match, already held, no unlocks, an error).
+export async function requestConfrontUnlock(
+  caseId: string,
+  suspectId: string,
+  clueId: string,
+  unlockedClueIds: string[],
+  options: UnlockOptions = {},
+): Promise<UnlockedClue | null> {
+  const answer = await postUnlock({ caseId, kind: "confront", suspectId, clueId, unlockedClueIds }, options);
+  return answer.status === "unlocked" ? answer.clue : null;
+}
+
+// Do these two clues connect to reveal a locked clue?
+export function requestCombineUnlock(
+  caseId: string,
+  clueIds: readonly [string, string],
+  unlockedClueIds: string[],
+  options: UnlockOptions = {},
+): Promise<UnlockAnswer> {
+  return postUnlock({ caseId, kind: "combine", clueIds: [...clueIds], unlockedClueIds }, options);
 }
