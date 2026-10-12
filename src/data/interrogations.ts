@@ -1,5 +1,6 @@
 import { CASE1_CLUES, CASE1_SUSPECTS } from "@/data/case1-ids";
 import { CASE2_CLUES, CASE2_SUSPECTS } from "@/data/case2-ids";
+import { case3Interrogations } from "@/data/case3/dialogue";
 import { case99Interrogations } from "@/data/test-case/case99";
 
 // Interrogation dialogue lives here until it moves into the database.
@@ -168,3 +169,7 @@ export const interrogations: Record<string, Interrogation> = {
 
 // Test-only Case 99, for Vercel Preview builds with NEXT_PUBLIC_ENABLE_TEST_CASE=1.
 if (process.env.NEXT_PUBLIC_ENABLE_TEST_CASE === "1") Object.assign(interrogations, case99Interrogations);
+
+// TEMPORARY GATE: Case 3's dialogue is built in only with NEXT_PUBLIC_ENABLE_CASE3=1 (Vercel
+// Preview). REMOVE THIS GATE, with the others for Case 3, WHEN CASE 3 LAUNCHES.
+if (process.env.NEXT_PUBLIC_ENABLE_CASE3 === "1") Object.assign(interrogations, case3Interrogations);

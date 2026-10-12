@@ -211,11 +211,27 @@ const secretValues = [process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()].filter(Bool
 // or server. With it on, its public story may appear; the locked clue and answer checks above
 // still apply to it in full. REMOVE the Case 3 entry when Case 3 launches.
 const gatedData = [
-  { label: "Test Case 99", flag: "NEXT_PUBLIC_ENABLE_TEST_CASE", files: /_test\.sql$/, literals: ["Test Locker", "TEST ONLY"] },
-  { label: "Case 3", flag: "NEXT_PUBLIC_ENABLE_CASE3", files: /(^|\/)01[01]_case3[^/]*\.sql$/, literals: [] },
+  { label: "Test Case 99", flag: "NEXT_PUBLIC_ENABLE_TEST_CASE", files: /_test\.sql$/, literals: ["Test Locker", "TEST ONLY"], sources: [] },
+  {
+    label: "Case 3",
+    flag: "NEXT_PUBLIC_ENABLE_CASE3",
+    files: /(^|\/)01[01]_case3[^/]*\.sql$/,
+    literals: [],
+    // Its offline copy and dialogue: every line of text in them is banned with the flag off.
+    sources: ["src/data/case3/case3.ts", "src/data/case3/dialogue.ts"],
+  },
 ].map((g) => {
   const ids = new Set();
   const text = new Set(g.literals);
+  for (const source of g.sources) {
+    const path = join(root, source);
+    if (!existsSync(path)) continue;
+    for (const m of readFileSync(path, "utf8").matchAll(/"((?:[^"\\\n]|\\.)*)"/g)) {
+      const value = JSON.parse(`"${m[1]}"`);
+      // Lines of text, not ids, paths or short labels (ids are covered from the SQL).
+      if (value.length >= 20 && /\s/.test(value) && !value.startsWith("@/")) text.add(value);
+    }
+  }
   for (const { file, sql } of migrations) {
     if (!g.files.test(file)) continue;
     for (const id of uuids(sql)) ids.add(id);
