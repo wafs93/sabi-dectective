@@ -125,7 +125,8 @@ describe("scripts/check-bundle.mjs and locked clues", () => {
 
   it("passes with a locked clue in the SQL that doesn't ship", () => {
     const r = checkBundle({ extraSql: LOCKED_SQL });
-    expect(r.out).toContain(", 1 locked clue ids, 0 rule ids, 1 locked images");
+    // 5 locked images: this one plus the 4 Case 3 pictures set by 012.
+    expect(r.out).toContain(", 1 locked clue ids, 0 rule ids, 5 locked images");
     expect(r.code).toBe(0);
   });
 

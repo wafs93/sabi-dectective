@@ -143,9 +143,12 @@ const ruleIds = new Set();
 const lockedTexts = new Set();
 // Names of two words or more are checked as exact phrases; one word is too common to tell apart.
 const lockedNames = new Set();
-// Random file names under /art/locked/.
+// Random file names under /art/locked/, from inserts and from any later update that sets one
+// (012_case3_locked_images.sql). Checked without the extension, so a bare name is caught too.
 const lockedImages = new Set();
+const LOCKED_IMAGE = /\/art\/locked\/([A-Za-z0-9_-]+)\.(?:jpe?g|png|webp)\b/g;
 for (const { file, sql } of allSql) {
+  for (const m of stripComments(sql).matchAll(LOCKED_IMAGE)) lockedImages.add(m[1]);
   for (const row of insertRows(sql, "locked_clues")) {
     const [id] = uuids(row.id);
     if (!id) {
@@ -157,8 +160,6 @@ for (const { file, sql } of allSql) {
     if (name && name.split(/\s+/).length >= 2) lockedNames.add(name);
     const text = sqlString(row.found_description);
     if (text) lockedTexts.add(text);
-    const image = sqlString(row.icon_image_url);
-    if (image) lockedImages.add(image.split("/").pop());
   }
   for (const row of insertRows(sql, "clue_unlocks")) {
     for (const id of uuids(row.unlocks_clue_id)) lockedIds.add(id);
@@ -217,8 +218,9 @@ const gatedData = [
     flag: "NEXT_PUBLIC_ENABLE_CASE3",
     files: /(^|\/)01[01]_case3[^/]*\.sql$/,
     literals: [],
-    // Its offline copy and dialogue: every line of text in them is banned with the flag off.
-    sources: ["src/data/case3/case3.ts", "src/data/case3/dialogue.ts"],
+    // Its offline copy, dialogue and art: every line of text in them, and the name of every
+    // picture the art imports, is banned with the flag off.
+    sources: ["src/data/case3/case3.ts", "src/data/case3/dialogue.ts", "src/data/case3/art.ts"],
   },
 ].map((g) => {
   const ids = new Set();
@@ -226,7 +228,9 @@ const gatedData = [
   for (const source of g.sources) {
     const path = join(root, source);
     if (!existsSync(path)) continue;
-    for (const m of readFileSync(path, "utf8").matchAll(/"((?:[^"\\\n]|\\.)*)"/g)) {
+    const src = readFileSync(path, "utf8");
+    for (const m of src.matchAll(/public\/art\/([A-Za-z0-9_-]+)\.(?:jpe?g|png|webp)/g)) text.add(m[1]);
+    for (const m of src.matchAll(/"((?:[^"\\\n]|\\.)*)"/g)) {
       const value = JSON.parse(`"${m[1]}"`);
       // Lines of text, not ids, paths or short labels (ids are covered from the SQL).
       if (value.length >= 20 && /\s/.test(value) && !value.startsWith("@/")) text.add(value);
