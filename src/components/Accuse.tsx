@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Placeholder, { clueIcon } from "@/components/Placeholder";
 import { Button, ScreenHeader, SectionLabel } from "@/components/ui";
 import { submitAccusation } from "@/lib/api";
 import { heldClues, type LoadedCase } from "@/lib/game";
+import { STILL_WORKING, createSingleFlight, withStillWorking } from "@/lib/slow-request";
 import type { Progress, SavedResult } from "@/lib/types";
 import type { CaseArt } from "@/data/art";
 
@@ -24,7 +25,11 @@ export default function Accuse({
   const [suspectId, setSuspectId] = useState<string | null>(null);
   const [cited, setCited] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ message: string; retry: boolean } | null>(null);
+  // Still waiting after a few seconds: say so on the button.
+  const [slow, setSlow] = useState(false);
+  // One accusation at a time: a double tap sends one request.
+  const flight = useRef(createSingleFlight());
   const clues = heldClues(bundle, progress);
   const suspect = bundle.suspects.find((s) => s.id === suspectId);
 
@@ -33,13 +38,19 @@ export default function Accuse({
 
   // The server decides the outcome; the browser never knows the answer.
   const submit = async (accusedId: string) => {
-    setSubmitting(true);
-    setError(null);
     const accusation = { suspectId: accusedId, citedClueIds: cited };
-    const res = await submitAccusation(bundle.caseData.id, accusation);
+    const sent = await flight.current.run(() => {
+      setSubmitting(true);
+      setSlow(false);
+      setError(null);
+      return withStillWorking(submitAccusation(bundle.caseData.id, accusation), () => setSlow(true));
+    });
+    if (!sent.sent) return;
+    const res = sent.value;
     setSubmitting(false);
+    setSlow(false);
     if (res.ok) onResult({ accusation, result: res.result });
-    else setError(res.message);
+    else setError({ message: res.message, retry: res.retry === true });
   };
 
   return (
@@ -127,14 +138,24 @@ export default function Accuse({
           )}
 
           <div className="mt-auto flex flex-col gap-2 pt-4">
-            {error && (
-              <p
-                role="alert"
-                className="rounded-lg border border-danger bg-danger-deep/30 p-3 text-paper"
-              >
-                {error}
-              </p>
-            )}
+            {error &&
+              (error.retry ? (
+                <button
+                  type="button"
+                  role="alert"
+                  onClick={() => submit(suspect.id)}
+                  className="min-h-11 rounded-lg border border-danger bg-danger-deep/30 p-3 text-left font-semibold text-paper hover:bg-danger-deep/60"
+                >
+                  {error.message}
+                </button>
+              ) : (
+                <p
+                  role="alert"
+                  className="rounded-lg border border-danger bg-danger-deep/30 p-3 text-paper"
+                >
+                  {error.message}
+                </p>
+              ))}
             <Button
               variant="danger"
               className="w-full text-center"
@@ -142,7 +163,9 @@ export default function Accuse({
               onClick={() => submit(suspect.id)}
             >
               {submitting
-                ? "Checking your case…"
+                ? slow
+                  ? STILL_WORKING
+                  : "Checking your case…"
                 : cited.length === 0
                   ? "Tick at least one piece of evidence"
                   : `Submit accusation (${cited.length} cited)`}

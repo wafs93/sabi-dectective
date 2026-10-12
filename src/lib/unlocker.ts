@@ -2,12 +2,29 @@ import type { UnlockedClue } from "@/lib/types";
 
 // Decides when to ask the server about a confront, for one case.
 // - Off (the case has no locked clues): never asks.
-// - Asks once per suspect + clue, however many times that confront is replayed.
+// - Asks once per suspect + clue, however many times that confront is replayed, once it has
+//   an answer. If it couldn't check (timeout, no connection), it may be asked again.
+// - Never sends the same confront twice at once.
 // - Never throws and never waits on anything but the request itself.
 
+export type ConfrontOutcome =
+  | { status: "unlocked"; clue: UnlockedClue }
+  // Answered: nothing new to reveal (no match, already held, or off).
+  | { status: "nothing" }
+  // Couldn't check (timeout, no connection, rate limit): the player may try again.
+  | { status: "error" }
+  // This confront is already being checked: nothing was sent.
+  | { status: "busy" };
+
 export type Unlocker = {
-  attempt: (suspectId: string, clueId: string) => Promise<UnlockedClue | null>;
+  attempt: (suspectId: string, clueId: string) => Promise<ConfrontOutcome>;
 };
+
+type UnlockReply =
+  | { status: "unlocked"; clue: UnlockedClue }
+  | { status: "already-unlocked" }
+  | { status: "no-match" }
+  | { status: "error" };
 
 export function createUnlocker({
   enabled,
@@ -16,27 +33,33 @@ export function createUnlocker({
   onUnlocked,
 }: {
   enabled: boolean;
-  request: (suspectId: string, clueId: string, heldUnlockedIds: string[]) => Promise<UnlockedClue | null>;
+  request: (suspectId: string, clueId: string, heldUnlockedIds: string[]) => Promise<UnlockReply>;
   heldUnlockedIds: () => string[];
   onUnlocked: (clue: UnlockedClue) => void;
 }): Unlocker {
-  const asked = new Set<string>();
+  const answered = new Set<string>();
+  const pending = new Set<string>();
   return {
     async attempt(suspectId, clueId) {
-      if (!enabled) return null;
+      if (!enabled) return { status: "nothing" };
       const key = `${suspectId}:${clueId}`;
-      if (asked.has(key)) return null;
-      asked.add(key);
-      let clue: UnlockedClue | null = null;
+      if (answered.has(key)) return { status: "nothing" };
+      if (pending.has(key)) return { status: "busy" };
+      pending.add(key);
+      let reply: UnlockReply;
       try {
-        clue = await request(suspectId, clueId, heldUnlockedIds());
+        reply = await request(suspectId, clueId, heldUnlockedIds());
       } catch {
-        return null;
+        return { status: "error" };
+      } finally {
+        pending.delete(key);
       }
+      if (reply.status === "error") return { status: "error" };
+      answered.add(key);
       // Already held after all (e.g. unlocked by another route): nothing new to show.
-      if (!clue || heldUnlockedIds().includes(clue.id)) return null;
-      onUnlocked(clue);
-      return clue;
+      if (reply.status !== "unlocked" || heldUnlockedIds().includes(reply.clue.id)) return { status: "nothing" };
+      onUnlocked(reply.clue);
+      return reply;
     },
   };
 }

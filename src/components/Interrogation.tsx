@@ -5,7 +5,9 @@ import { useEffect, useRef, useState } from "react";
 import Placeholder, { clueIcon } from "@/components/Placeholder";
 import { Button, SectionLabel } from "@/components/ui";
 import { interrogations, type InterrogationQuestion } from "@/data/interrogations";
-import type { Clue, Contradiction, Progress, Suspect, UnlockedClue } from "@/lib/types";
+import { SLOW_CONNECTION, STILL_WORKING, withStillWorking } from "@/lib/slow-request";
+import type { Clue, Contradiction, Progress, Suspect } from "@/lib/types";
+import type { ConfrontOutcome } from "@/lib/unlocker";
 
 type Message =
   | { id: number; from: "suspect"; text: string; confronted: boolean }
@@ -28,9 +30,8 @@ export default function Interrogation({
   heldClues: Clue[];
   progress: Progress;
   onContradiction: (entry: Contradiction) => void;
-  // Only for cases with locked clues: asks whether this confront reveals one. Resolves to
-  // the new clue, or null for anything else (including errors), and never throws.
-  onConfrontUnlock?: (suspectId: string, clueId: string) => Promise<UnlockedClue | null>;
+  // Only for cases with locked clues: asks whether this confront reveals one. Never throws.
+  onConfrontUnlock?: (suspectId: string, clueId: string) => Promise<ConfrontOutcome>;
   onBack: () => void;
 }) {
   const script = interrogations[suspect.id];
@@ -39,6 +40,9 @@ export default function Interrogation({
   ]);
   const [evidenceOpen, setEvidenceOpen] = useState(false);
   const [unlockToast, setUnlockToast] = useState<{ id: number; name: string } | null>(null);
+  // Confronts whose unlock check is still out, by question id: "waiting" for the first few
+  // seconds, then "slow" (Still working...), or "failed" (offer a retry).
+  const [checks, setChecks] = useState<Record<string, "waiting" | "slow" | "failed">>({});
   const nextId = useRef(1);
   const endRef = useRef<HTMLLIElement>(null);
   const mounted = useRef(true);
@@ -96,10 +100,34 @@ export default function Interrogation({
     });
     setEvidenceOpen(false);
 
-    // After the confront has played as usual, quietly ask whether it reveals a locked clue.
-    // Nothing waits on this, and only a new clue shows anything.
-    void onConfrontUnlock?.(suspect.id, q.unlockedByClueId!).then((clue) => {
-      if (!clue || !mounted.current) return;
+    // After the confront has played as usual, ask whether it reveals a locked clue.
+    checkUnlock(q);
+  };
+
+  const setCheck = (qid: string, state: "waiting" | "slow" | "failed" | null) =>
+    setChecks((prev) => {
+      const next = { ...prev };
+      if (state) next[qid] = state;
+      else delete next[qid];
+      return next;
+    });
+
+  // Nothing shows unless it is slow (Still working...), fails (retry), or reveals a clue.
+  const checkUnlock = (q: InterrogationQuestion) => {
+    if (!onConfrontUnlock) return;
+    setCheck(q.id, "waiting");
+    const slow = () => {
+      if (mounted.current) setChecks((prev) => (prev[q.id] === "waiting" ? { ...prev, [q.id]: "slow" } : prev));
+    };
+    void withStillWorking(onConfrontUnlock(suspect.id, q.unlockedByClueId!), slow).then((outcome) => {
+      if (!mounted.current) return;
+      if (outcome.status === "error") {
+        setCheck(q.id, "failed");
+        return;
+      }
+      setCheck(q.id, null);
+      if (outcome.status !== "unlocked") return;
+      const clue = outcome.clue;
       const id = nextId.current++;
       setMessages((prev) => [...prev, { id, from: "evidence", text: clue.name }]);
       setUnlockToast({ id, name: clue.name });
@@ -109,6 +137,7 @@ export default function Interrogation({
       }, 2800);
     });
   };
+  const checking = (q: InterrogationQuestion) => checks[q.id] === "waiting" || checks[q.id] === "slow";
 
   const questions = script?.questions ?? [];
   const foundClues = heldClues;
@@ -208,6 +237,24 @@ export default function Interrogation({
             </li>
           ))}
         </ol>
+        {questions
+          .filter((q) => checks[q.id] === "slow" || checks[q.id] === "failed")
+          .map((q) =>
+            checks[q.id] === "slow" ? (
+              <p key={q.id} role="status" className="mt-3 text-center text-sm font-semibold text-muted">
+                {STILL_WORKING}
+              </p>
+            ) : (
+              <button
+                key={q.id}
+                type="button"
+                onClick={() => checkUnlock(q)}
+                className="mt-3 min-h-11 w-full rounded-lg border border-brass-dim px-3 text-sm font-semibold text-brass hover:bg-ink-800"
+              >
+                {SLOW_CONNECTION}
+              </button>
+            ),
+          )}
       </section>
 
       {/* Actions */}
@@ -273,6 +320,7 @@ export default function Interrogation({
                             <button
                               type="button"
                               onClick={() => confront(q)}
+                              disabled={checking(q)}
                               className="flex min-h-14 w-full items-center gap-3 rounded-lg border border-danger/70 bg-danger-deep/60 p-2 text-left text-paper hover:bg-danger-deep"
                             >
                               <span aria-hidden className="w-8 text-center text-xl">
@@ -284,8 +332,10 @@ export default function Interrogation({
                                   About: “{q.text}”
                                 </span>
                               </span>
-                              {logged(q) && (
-                                <span className="text-sm font-semibold text-verified">✓ Logged</span>
+                              {checking(q) ? (
+                                <span className="text-sm font-semibold text-muted">{STILL_WORKING}</span>
+                              ) : (
+                                logged(q) && <span className="text-sm font-semibold text-verified">✓ Logged</span>
                               )}
                             </button>
                           </li>

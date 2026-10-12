@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CASE_NUMBERS, hasLockedClues } from "@/data/cases";
-import { requestConfrontUnlock } from "@/lib/api";
+import { requestConfrontAnswer, requestConfrontUnlock } from "@/lib/api";
 import { addUnlockedClue, heldClues, readProgress, writeProgress, type LoadedCase } from "@/lib/game";
 import type { Progress, UnlockedClue } from "@/lib/types";
 import { createUnlocker } from "@/lib/unlocker";
@@ -109,7 +109,7 @@ describe("createUnlocker (when to ask)", () => {
     const unlocked: UnlockedClue[] = [];
     const unlocker = createUnlocker({
       enabled,
-      request: (s, c, h) => requestConfrontUnlock(CASE99_ID, s, c, h, { fetchImpl }),
+      request: (s, c, h) => requestConfrontAnswer(CASE99_ID, s, c, h, { fetchImpl }),
       heldUnlockedIds: () => [...held, ...unlocked.map((u) => u.id)],
       onUnlocked: (clue) => unlocked.push(clue),
     });
@@ -119,7 +119,7 @@ describe("createUnlocker (when to ask)", () => {
   it("with the switch off, makes no call at all", async () => {
     const { fetchImpl, fetchMock } = mockRoute();
     const { unlocker, unlocked } = unlockerWith(fetchImpl, { enabled: false });
-    expect(await unlocker.attempt(alpha, rubberDuck)).toBeNull();
+    expect(await unlocker.attempt(alpha, rubberDuck)).toEqual({ status: "nothing" });
     expect(fetchMock).not.toHaveBeenCalled();
     expect(unlocked).toEqual([]);
   });
@@ -127,8 +127,8 @@ describe("createUnlocker (when to ask)", () => {
   it("unlocks once, then never asks about the same confront again", async () => {
     const { fetchImpl, fetchMock } = mockRoute();
     const { unlocker, unlocked } = unlockerWith(fetchImpl);
-    expect(await unlocker.attempt(alpha, rubberDuck)).toEqual(note);
-    expect(await unlocker.attempt(alpha, rubberDuck)).toBeNull();
+    expect(await unlocker.attempt(alpha, rubberDuck)).toEqual({ status: "unlocked", clue: note });
+    expect(await unlocker.attempt(alpha, rubberDuck)).toEqual({ status: "nothing" });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(unlocked).toEqual([note]);
   });
@@ -145,20 +145,20 @@ describe("createUnlocker (when to ask)", () => {
   it("shows nothing for a clue the player already holds", async () => {
     const { fetchImpl } = mockRoute();
     const { unlocker, unlocked } = unlockerWith(fetchImpl, { held: [confessionNote] });
-    expect(await unlocker.attempt(alpha, rubberDuck)).toBeNull();
+    expect(await unlocker.attempt(alpha, rubberDuck)).toEqual({ status: "nothing" });
     expect(unlocked).toEqual([]);
   });
 
-  it("a failing or rate-limited call shows nothing", async () => {
+  it("a failing or rate-limited call reveals nothing and reports an error the player can retry", async () => {
     const failing = (async () => {
       throw new Error("offline");
     }) as typeof fetch;
     const a = unlockerWith(failing);
-    expect(await a.unlocker.attempt(alpha, rubberDuck)).toBeNull();
+    expect(await a.unlocker.attempt(alpha, rubberDuck)).toEqual({ status: "error" });
     expect(a.unlocked).toEqual([]);
     const limited = (async () => Response.json({ error: "x" }, { status: 429 })) as typeof fetch;
     const b = unlockerWith(limited);
-    expect(await b.unlocker.attempt(alpha, rubberDuck)).toBeNull();
+    expect(await b.unlocker.attempt(alpha, rubberDuck)).toEqual({ status: "error" });
     expect(b.unlocked).toEqual([]);
   });
 
@@ -173,7 +173,7 @@ describe("createUnlocker (when to ask)", () => {
         throw new Error("must not be called");
       },
     });
-    await expect(unlocker.attempt(alpha, rubberDuck)).resolves.toBeNull();
+    await expect(unlocker.attempt(alpha, rubberDuck)).resolves.toEqual({ status: "error" });
   });
 });
 
@@ -207,7 +207,7 @@ describe("an unlocked clue in saved progress", () => {
     let progress: Progress = { foundClueIds: [rubberDuck], contradictions: [] };
     const unlocker = createUnlocker({
       enabled: true,
-      request: (s, c, h) => requestConfrontUnlock(CASE99_ID, s, c, h, { fetchImpl }),
+      request: (s, c, h) => requestConfrontAnswer(CASE99_ID, s, c, h, { fetchImpl }),
       heldUnlockedIds: () => (progress.unlockedClues ?? []).map((u) => u.id),
       onUnlocked: (clue) => {
         progress = addUnlockedClue(progress, clue);

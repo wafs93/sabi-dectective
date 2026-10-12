@@ -3,6 +3,7 @@ import Placeholder, { clueIcon } from "@/components/Placeholder";
 import { Button, ScreenHeader, SectionLabel } from "@/components/ui";
 import type { CaseArt } from "@/data/art";
 import { heldClues, type LoadedCase } from "@/lib/game";
+import { SLOW_CONNECTION, STILL_WORKING, createSingleFlight, withStillWorking } from "@/lib/slow-request";
 import type { Clue, Progress } from "@/lib/types";
 import { pairKey, type CombineOutcome, type UnlockKind } from "@/lib/unlocker";
 
@@ -42,6 +43,10 @@ export default function Casebook({
   const [selected, setSelected] = useState<string[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Still waiting after a few seconds: say so.
+  const [slow, setSlow] = useState(false);
+  // One check at a time, whatever the state says yet: a double tap sends one request.
+  const flight = useRef(createSingleFlight());
   const [revealed, setRevealed] = useState<string | null>(null);
   const [toast, setToast] = useState<{ id: number; name: string } | null>(null);
   const mounted = useRef(true);
@@ -76,11 +81,16 @@ export default function Casebook({
   const connect = async () => {
     if (!locked || selected.length !== 2 || busy || pairTried) return;
     const [a, b] = selected;
-    setBusy(true);
-    setMessage(null);
-    const outcome = await locked.onConnect(a, b);
-    if (!mounted.current) return;
+    const sent = await flight.current.run(async () => {
+      setBusy(true);
+      setSlow(false);
+      setMessage(null);
+      return withStillWorking(locked.onConnect(a, b), () => mounted.current && setSlow(true));
+    });
+    if (!sent.sent || !mounted.current) return;
+    const outcome = sent.value;
     setBusy(false);
+    setSlow(false);
     switch (outcome.status) {
       case "unlocked": {
         stopSelecting();
@@ -104,7 +114,8 @@ export default function Casebook({
         setMessage("Already tried");
         break;
       case "error":
-        setMessage("Couldn't check right now. Try again.");
+        // The pair stays picked, so tapping the message sends it again.
+        setMessage(SLOW_CONNECTION);
         break;
     }
   };
@@ -131,7 +142,17 @@ export default function Casebook({
                   : `Connect ${nameOf(selected[0])} with ${nameOf(selected[1])}?`}
               </p>
               <p role="status" aria-live="polite" className="min-h-6 text-sm font-semibold text-brass">
-                {pairTried ? "Already tried" : busy ? "Checking…" : message}
+                {pairTried ? (
+                  "Already tried"
+                ) : busy ? (
+                  slow ? STILL_WORKING : "Checking…"
+                ) : message === SLOW_CONNECTION && selected.length === 2 ? (
+                  <button type="button" onClick={connect} className="min-h-11 text-left underline underline-offset-4">
+                    {SLOW_CONNECTION}
+                  </button>
+                ) : (
+                  message
+                )}
               </p>
               <div className="flex gap-2">
                 <Button

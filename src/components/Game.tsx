@@ -12,7 +12,7 @@ import SceneScreen from "@/components/SceneScreen";
 import Suspects from "@/components/Suspects";
 import { caseArt } from "@/data/art";
 import { hasLockedClues, hiddenClueKinds, isTestCase, listCases } from "@/data/cases";
-import { requestCombineUnlock, requestConfrontUnlock } from "@/lib/api";
+import { requestCombineUnlock, requestConfrontAnswer } from "@/lib/api";
 import {
   clearProgress,
   emptyProgress,
@@ -171,13 +171,13 @@ export default function Game() {
   // asks about each confront afresh. Created and used only from the confront event.
   const unlockerRef = useRef<{ caseId: string; unlocker: Unlocker } | null>(null);
   const attemptUnlock = (suspectId: string, clueId: string) => {
-    if (!unlocksOn || caseId === null) return Promise.resolve(null);
+    if (!unlocksOn || caseId === null) return Promise.resolve({ status: "nothing" as const });
     if (unlockerRef.current?.caseId !== caseId) {
       unlockerRef.current = {
         caseId,
         unlocker: createUnlocker({
           enabled: true,
-          request: (s, c, held) => requestConfrontUnlock(caseId, s, c, held),
+          request: (s, c, held) => requestConfrontAnswer(caseId, s, c, held),
           heldUnlockedIds: () => (progressRef.current.unlockedClues ?? []).map((u) => u.id),
           onUnlocked: (clue) => revealUnlocked(clue, { kind: "confront" }),
         }),
