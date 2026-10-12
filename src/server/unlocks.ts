@@ -69,15 +69,15 @@ export function remainingLocked(
 
 // ---- Guessing guard ----
 // Counts WRONG unlock attempts (a confront or combine that reveals nothing) per client.
-// 10 wrong within 10 minutes starts a cooldown: 2 minutes, then 4, 8, 16, capped at 30, doubling
+// 25 wrong within 10 minutes starts a cooldown: 1 minute, then 2, 4, 8, capped at 15, doubling
 // each time it is hit again. A correct unlock is never counted and never lowers the penalty.
 // The penalty level is forgotten after a quiet hour (no cooldown hit). Kept in memory, per server
 // instance, like the rate limiter: it resets on a cold start and is not shared between instances.
 
-export const GUESS_LIMIT = 10;
+export const GUESS_LIMIT = 25;
 export const GUESS_WINDOW_MS = 10 * 60_000;
-export const COOLDOWN_BASE_MS = 2 * 60_000;
-export const COOLDOWN_MAX_MS = 30 * 60_000;
+export const COOLDOWN_BASE_MS = 60_000;
+export const COOLDOWN_MAX_MS = 15 * 60_000;
 export const PENALTY_MEMORY_MS = 60 * 60_000;
 
 export type GuessGuard = {

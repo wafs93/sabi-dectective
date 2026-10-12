@@ -46,7 +46,7 @@ function setup() {
   };
 }
 
-// 10 wrong attempts, spaced so the 30 a minute limit never comes into it.
+// Wrong attempts 5 seconds apart, so the 30 a minute limit never comes into it.
 async function guessWrong(s: ReturnType<typeof setup>, n: number, ip?: string) {
   for (let i = 0; i < n; i++) {
     s.wait(5_000);
@@ -56,66 +56,66 @@ async function guessWrong(s: ReturnType<typeof setup>, n: number, ip?: string) {
 }
 
 describe("the guessing cooldown", () => {
-  it("after 10 wrong attempts, refuses the next for 2 minutes, even a right one", async () => {
+  it("after 25 wrong attempts, refuses the 26th for 1 minute, even a right one", async () => {
     const s = setup();
-    expect(GUESS_LIMIT).toBe(10);
-    await guessWrong(s, 10);
+    expect(GUESS_LIMIT).toBe(25);
+    await guessWrong(s, 25);
     const refused = await s.right();
     expect(refused.status).toBe(429);
-    expect(refused.json).toEqual({ status: "cooldown", error: COOLDOWN_MESSAGE, retryAfterSeconds: 120 });
-    expect(refused.retryAfter).toBe("120");
+    expect(refused.json).toEqual({ status: "cooldown", error: COOLDOWN_MESSAGE, retryAfterSeconds: 60 });
+    expect(refused.retryAfter).toBe("60");
     expect((await s.wrong()).status).toBe(429);
     // Other players are not affected.
     expect((await s.right("5.6.7.8")).json.status).toBe("unlocked");
-    // Over after 2 minutes.
-    s.wait(2 * MIN);
+    // Over after 1 minute.
+    s.wait(MIN);
     expect((await s.right()).json.status).toBe("unlocked");
   });
 
   it("a correct unlock still works under the limit, and does not count as wrong", async () => {
     const s = setup();
-    await guessWrong(s, 9);
+    await guessWrong(s, 24);
     const right = await s.right();
     expect(right.status).toBe(200);
     expect(right.json.status).toBe("unlocked");
     expect((await s.rightCombine()).json.status).toBe("unlocked");
-    // Still 9 wrong: the 10th wrong one is answered, the one after is refused.
+    // Still 24 wrong: the 25th wrong one is answered, the one after is refused.
     expect((await s.wrong()).json.status).toBe("no-match");
     expect((await s.right()).status).toBe(429);
   });
 
   it("a correct unlock does not reset the count", async () => {
     const s = setup();
-    await guessWrong(s, 5);
+    await guessWrong(s, 12);
     await s.right();
-    await guessWrong(s, 5);
+    await guessWrong(s, 13);
     expect((await s.right()).status).toBe(429);
   });
 
-  it("doubles each time it is hit again: 2, 4, 8, 16, then 30 minutes at most", async () => {
+  it("doubles each time it is hit again: 1, 2, 4, 8, then 15 minutes at most", async () => {
     const s = setup();
     const seen: number[] = [];
     for (let round = 0; round < 6; round++) {
-      await guessWrong(s, 10);
+      await guessWrong(s, 25);
       const r = await s.wrong();
       expect(r.status).toBe(429);
       seen.push(r.json.retryAfterSeconds);
       s.wait(r.json.retryAfterSeconds * 1000);
     }
-    expect(seen).toEqual([120, 240, 480, 960, 1800, 1800]);
+    expect(seen).toEqual([60, 120, 240, 480, 900, 900]);
   });
 
   it("forgets the penalty level after a quiet hour", async () => {
     const s = setup();
-    await guessWrong(s, 10);
-    s.wait(2 * MIN + 60 * MIN);
-    await guessWrong(s, 10);
-    expect((await s.wrong()).json.retryAfterSeconds).toBe(120);
+    await guessWrong(s, 25);
+    s.wait(MIN + 60 * MIN);
+    await guessWrong(s, 25);
+    expect((await s.wrong()).json.retryAfterSeconds).toBe(60);
   });
 
   it("the refused reply says nothing about clues, suspects or pairs", async () => {
     const s = setup();
-    await guessWrong(s, 10);
+    await guessWrong(s, 25);
     for (const r of [await s.right(), await s.rightCombine(), await s.wrong()]) {
       expect(Object.keys(r.json).sort()).toEqual(["error", "retryAfterSeconds", "status"]);
       const lower = r.text.toLowerCase();
@@ -129,18 +129,18 @@ describe("the guessing cooldown", () => {
     }
   });
 
-  it("a real player making 9 wrong guesses is never blocked", async () => {
+  it("a real player making 24 wrong guesses is never blocked", async () => {
     const s = setup();
-    // 9 wrong guesses, with right ones in between.
-    for (let i = 0; i < 9; i++) {
+    // 24 wrong guesses inside 10 minutes, with right ones in between.
+    for (let i = 0; i < 24; i++) {
       expect((await s.wrong()).status).toBe(200);
       if (i % 3 === 0) expect((await s.rightCombine()).status).toBe(200);
-      s.wait(30_000);
+      s.wait(20_000);
     }
     expect((await s.right()).status).toBe(200);
-    // Ten minutes on, the old ones no longer count: 9 more are fine too.
+    // Ten minutes on, the old ones no longer count: 24 more are fine too.
     s.wait(10 * MIN);
-    await guessWrong(s, 9);
+    await guessWrong(s, 24);
     expect((await s.right()).status).toBe(200);
   });
 
@@ -169,8 +169,11 @@ describe("what the player sees", () => {
     });
     await new Promise((r) => setTimeout(r, 50));
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(cooldownMessage(45)).toBe("Take a breath and look over your evidence. You can try again in 45 seconds.");
+    expect(cooldownMessage(1)).toBe("Take a breath and look over your evidence. You can try again in 1 second.");
+    expect(cooldownMessage(60)).toBe("Take a breath and look over your evidence. You can try again in 1 minute.");
     expect(cooldownMessage(61)).toBe("Take a breath and look over your evidence. You can try again in 2 minutes.");
-    expect(cooldownMessage(45)).toBe("Take a breath and look over your evidence. You can try again in 1 minute.");
+    expect(cooldownMessage(900)).toBe("Take a breath and look over your evidence. You can try again in 15 minutes.");
   });
 
   it("each kind of failure has its own wording", async () => {

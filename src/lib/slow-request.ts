@@ -10,10 +10,15 @@ export const STILL_WORKING = "Still working...";
 export const SLOW_CONNECTION = "Slow connection. Tap to try again.";
 export const SERVER_TROUBLE = "Couldn't check that right now. Tap to try again.";
 export const RATE_LIMITED = "Too many tries at once. Wait a minute, then try again.";
-export const cooldownMessage = (seconds: number) => {
-  const minutes = Math.max(1, Math.ceil(seconds / 60));
-  return `Take a breath and look over your evidence. You can try again in ${minutes} ${minutes === 1 ? "minute" : "minutes"}.`;
+// Under a minute in seconds ("45 seconds"), otherwise in whole minutes, rounded up ("4 minutes").
+export const waitText = (seconds: number) => {
+  const s = Math.max(1, Math.ceil(seconds));
+  if (s < 60) return `${s} ${s === 1 ? "second" : "seconds"}`;
+  const m = Math.ceil(s / 60);
+  return `${m} ${m === 1 ? "minute" : "minutes"}`;
 };
+export const cooldownMessage = (seconds: number) =>
+  `Take a breath and look over your evidence. You can try again in ${waitText(seconds)}.`;
 
 // What to show when an unlock check couldn't be made, and whether tapping it should send the
 // same check again. A cooldown or rate limit is never retried by a tap or by itself.
